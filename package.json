@@ -1,0 +1,30 @@
+{
+  "name": "zoom-gavel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 5173",
+    "build": "next build",
+    "lint": "eslint .",
+    "start": "next start -p 5173",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zoom/appssdk": "^0.16.41",
+    "next": "16.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.3.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

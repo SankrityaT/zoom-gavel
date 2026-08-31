@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+out/
+.env
+.env.*
+!.env.example
+*.local
+*.log
+.DS_Store
+
+# local QA screenshots and tool artifacts
+/*.png
+!/public/*.png
+.playwright-mcp/
+*.tsbuildinfo
+.vercel
