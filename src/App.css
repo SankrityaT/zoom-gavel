@@ -414,3 +414,43 @@ footer {
     transition-duration: 0.01ms !important;
   }
 }
+
+.live-sync {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.live-sync dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin: 12px 0 14px;
+}
+
+.live-sync dt {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.live-sync dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+.live-sync-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.live-sync-bid {
+  font-size: 22px !important;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--blue);
+}

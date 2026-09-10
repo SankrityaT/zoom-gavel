@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import LiveBidSync from './LiveBidSync'
 import type { ZoomDiagnostics, CollaborateEvent } from './zoom'
 import {
   configureZoomSdk,
@@ -252,9 +253,19 @@ function App() {
           </p>
         )}
 
+        <LiveBidSync
+          sessionId={collaborateEvent?.collaborateUUID ?? 'browser-test'}
+          bidderId={
+            check.data?.user?.screenName ??
+            check.data?.user?.role ??
+            'Browser tester'
+          }
+          fromCollaborate={Boolean(collaborateEvent?.collaborateUUID)}
+        />
+
         <footer>
           <span>{zoomCapabilities.length} capabilities declared</span>
-          <span>No bid state is synced yet</span>
+          <span>Bid state syncs via Supabase Realtime</span>
         </footer>
       </section>
     </main>

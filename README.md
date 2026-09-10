@@ -56,6 +56,29 @@ Use the Marketplace **Local Test** flow to add the app to your Zoom account. Ope
 
 The Collaborate ID identifies the shared session. It does not synchronize app state. Bid state will live in a backend keyed to that ID in the next phase.
 
+## Live bid sync architecture
+
+Bid state lives in Supabase Postgres, one row per Zoom Collaborate UUID in
+`auction_sessions` (see `supabase/migrations/`). The sync model:
+
+- Writes go only through `POST /api/session/[uuid]` using the server-side
+  service role key. Bids are accepted atomically by the `place_bid` SQL
+  function: only a strictly higher bid on an open session wins, so
+  concurrent bids cannot clobber each other. Rejected bids return 409.
+- Reads and push: clients hold a Supabase Realtime websocket subscription
+  (anon key, read-only via RLS) filtered to their session row. Every
+  accepted bid is pushed to all participants instantly. No client polling.
+- `GET /api/session/[uuid]` serves initial state on load.
+
+Environment variables: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` (browser, read + realtime), and
+`SUPABASE_SERVICE_ROLE_KEY` (server only, never exposed to the client).
+
+The `/zoom-test` panel includes a Live Bid Sync section: inside a
+Collaborate session it uses the Collaborate UUID; in a plain browser it
+falls back to a shared `browser-test` session so sync can be verified in
+two tabs without Zoom.
+
 ## Commands
 
 ```bash
