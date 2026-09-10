@@ -1,6 +1,6 @@
 # Zoom Gavel
 
-Zoom Gavel is a Next.js Zoom App prototype for native, real-time auction bidding inside a Zoom meeting. The repository currently contains the Week 1 SDK diagnostic panel and the foundation for the marketing site. It does not sync bid state yet.
+Zoom Gavel is a Next.js Zoom App prototype for native, real-time auction bidding inside a Zoom meeting. The repository contains the marketing site, the in-meeting diagnostic panel at /zoom-test, and the live bid sync backend (Supabase Postgres + Realtime).
 
 ## Local setup
 
@@ -68,16 +68,26 @@ Bid state lives in Supabase Postgres, one row per Zoom Collaborate UUID in
 - Reads and push: clients hold a Supabase Realtime websocket subscription
   (anon key, read-only via RLS) filtered to their session row. Every
   accepted bid is pushed to all participants instantly. No client polling.
-- `GET /api/session/[uuid]` serves initial state on load.
+- `GET /api/session/[uuid]` serves initial state on load and is refetched
+  whenever the realtime channel (re)subscribes, so reconnects reconcile
+  any missed updates.
 
 Environment variables: `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` (browser, read + realtime), and
 `SUPABASE_SERVICE_ROLE_KEY` (server only, never exposed to the client).
 
-The `/zoom-test` panel includes a Live Bid Sync section: inside a
-Collaborate session it uses the Collaborate UUID; in a plain browser it
-falls back to a shared `browser-test` session so sync can be verified in
-two tabs without Zoom.
+The `/zoom-test` panel includes a Live Bid Sync section. Inside a Zoom
+meeting the session is keyed by the meeting UUID (base64url-encoded),
+which every participant including guests can read; the Collaborate UUID
+is unsuitable because only the host's start event carries it. In a plain
+browser each browser gets its own private demo session (persisted in
+localStorage), so two tabs in one browser share an auction but strangers
+never share a row.
+
+Known gaps, tracked deliberately for later phases: no server-side host
+role verification, no rate limiting, sessions never expire, and bidder
+identity is client-asserted. The bid ceiling is $1,000,000, enforced in
+the API and again inside the place_bid SQL function.
 
 ## Commands
 

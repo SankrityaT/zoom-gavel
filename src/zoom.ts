@@ -27,6 +27,13 @@ export type ZoomDiagnostics = {
 
 export type CollaborateEvent = OnCollaborateChangeEvent
 
+// Discriminated union: data exists exactly when connected, the error
+// string exactly when disconnected. No field needs manual null-keeping.
+export type CheckState =
+  | { phase: 'checking' }
+  | { phase: 'connected'; data: ZoomDiagnostics }
+  | { phase: 'disconnected'; error: string }
+
 let configurationPromise: Promise<ZoomDiagnostics> | null = null
 
 async function runZoomConfiguration(): Promise<ZoomDiagnostics> {
@@ -62,10 +69,15 @@ async function runZoomConfiguration(): Promise<ZoomDiagnostics> {
 
 export function configureZoomSdk({ force = false } = {}) {
   if (force || !configurationPromise) {
-    configurationPromise = runZoomConfiguration().catch((error: unknown) => {
-      configurationPromise = null
-      throw error
-    })
+    const attempt: Promise<ZoomDiagnostics> = runZoomConfiguration().catch(
+      (error: unknown) => {
+        // Only clear the cache if this attempt is still the active one; a
+        // slow stale rejection must not wipe out a newer in-flight config.
+        if (configurationPromise === attempt) configurationPromise = null
+        throw error
+      },
+    )
+    configurationPromise = attempt
   }
 
   return configurationPromise

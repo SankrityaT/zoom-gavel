@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import LiveBidSync from './LiveBidSync'
-import type { ZoomDiagnostics, CollaborateEvent } from './zoom'
+import { describeError, toSessionKey } from '@/lib/gavel/demo'
+import type { CheckState } from './zoom'
 import {
   configureZoomSdk,
   startCollaborateMode,
@@ -11,81 +12,78 @@ import {
   zoomCapabilities,
   zoomSdkVersion,
 } from './zoom'
+import type { CollaborateEvent } from './zoom'
 
-type CheckState =
-  | { phase: 'checking'; data: null; message: string }
-  | { phase: 'connected'; data: ZoomDiagnostics; message: string }
-  | { phase: 'disconnected'; data: null; message: string }
+const FALLBACK_KEY_STORAGE = 'gavel-demo-session'
 
-function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-
+// Per-browser demo session id: two tabs in one browser share an auction,
+// but strangers on the public site never share a row.
+function readOrCreateFallbackKey() {
   try {
-    return JSON.stringify(error)
+    const existing = window.localStorage.getItem(FALLBACK_KEY_STORAGE)
+    if (existing) return existing
+    const fresh = `demo-${crypto.randomUUID().slice(0, 8)}`
+    window.localStorage.setItem(FALLBACK_KEY_STORAGE, fresh)
+    return fresh
   } catch {
-    return 'Unknown Zoom SDK error'
+    return `demo-${crypto.randomUUID().slice(0, 8)}`
   }
 }
 
+// Cached so useSyncExternalStore gets a stable snapshot.
+let cachedFallbackKey: string | null = null
+function getFallbackKey() {
+  if (cachedFallbackKey === null) cachedFallbackKey = readOrCreateFallbackKey()
+  return cachedFallbackKey
+}
+
 function App() {
-  const [check, setCheck] = useState<CheckState>({
-    phase: 'checking',
-    data: null,
-    message: 'Calling zoomSdk.config()...',
-  })
+  const [check, setCheck] = useState<CheckState>({ phase: 'checking' })
   const [collaborateEvent, setCollaborateEvent] =
     useState<CollaborateEvent | null>(null)
   const [actionMessage, setActionMessage] = useState('')
+  // SSR-safe, lint-clean read of the per-browser demo key.
+  const fallbackKey = useSyncExternalStore(
+    () => () => {},
+    getFallbackKey,
+    () => null,
+  )
 
-  const completeSdkCheck = useCallback(async () => {
+  // Async half of the check: every setState here happens after an await,
+  // so it is safe to call from the mount effect.
+  const performCheck = useCallback(async (force: boolean) => {
     try {
-      const data = await configureZoomSdk({ force: true })
-      setCheck({
-        phase: 'connected',
-        data,
-        message: 'Zoom Apps SDK configured successfully.',
-      })
+      const data = await configureZoomSdk({ force })
+      setCheck({ phase: 'connected', data })
     } catch (error) {
-      setCheck({
-        phase: 'disconnected',
-        data: null,
-        message: errorMessage(error),
-      })
+      setCheck({ phase: 'disconnected', error: describeError(error) })
     }
   }, [])
 
-  const runSdkCheck = useCallback(async () => {
-    setCheck({
-      phase: 'checking',
-      data: null,
-      message: 'Calling zoomSdk.config()...',
-    })
-    setActionMessage('')
-    await completeSdkCheck()
-  }, [completeSdkCheck])
+  const runSdkCheck = useCallback(
+    (options?: { force?: boolean }) => {
+      setCheck({ phase: 'checking' })
+      setActionMessage('')
+      return performCheck(options?.force ?? false)
+    },
+    [performCheck],
+  )
 
   useEffect(() => {
+    // Initial state is already 'checking'; only the async part runs here,
+    // with a guard so a slow result cannot land after unmount.
     let active = true
 
-    configureZoomSdk()
-      .then((data) => {
-        if (!active) return
-        setCheck({
-          phase: 'connected',
-          data,
-          message: 'Zoom Apps SDK configured successfully.',
-        })
-      })
-      .catch((error: unknown) => {
-        if (!active) return
-        setCheck({
-          phase: 'disconnected',
-          data: null,
-          message: errorMessage(error),
-        })
-      })
+    async function initialCheck() {
+      try {
+        const data = await configureZoomSdk({ force: false })
+        if (active) setCheck({ phase: 'connected', data })
+      } catch (error) {
+        if (active) setCheck({ phase: 'disconnected', error: describeError(error) })
+      }
+    }
 
+    void initialCheck()
     return () => {
       active = false
     }
@@ -95,38 +93,63 @@ function App() {
     if (check.phase !== 'connected') return
 
     return subscribeToZoomEvents({
-      onCollaborateChange: (event) => setCollaborateEvent(event),
-      onRunningContextChange: () => void runSdkCheck(),
+      onCollaborateChange: (event) => {
+        setCollaborateEvent(event)
+        setActionMessage('')
+      },
+      onRunningContextChange: () => void runSdkCheck({ force: true }),
     })
   }, [check.phase, runSdkCheck])
 
-  const context = check.data?.config.runningContext ?? 'browser preview'
-  const isMeeting = check.data
-    ? ['inMeeting', 'inCollaborate'].includes(
-        check.data.config.runningContext,
-      )
+  const diagnostics = check.phase === 'connected' ? check.data : null
+  const context = diagnostics?.config.runningContext ?? 'browser preview'
+  const isMeeting = diagnostics
+    ? ['inMeeting', 'inCollaborate'].includes(diagnostics.config.runningContext)
     : false
-  const unsupportedCount = check.data?.config.unsupportedApis.length ?? 0
-  const readiness = useMemo(
-    () => [
-      {
-        label: 'React shell',
-        detail: 'Running',
-        ready: true,
-      },
-      {
-        label: 'Zoom SDK config',
-        detail: check.phase === 'connected' ? 'Connected' : 'Waiting for Zoom',
-        ready: check.phase === 'connected',
-      },
-      {
-        label: 'Meeting identity',
-        detail: check.data?.meeting ? 'Available' : 'Open inside a meeting',
-        ready: Boolean(check.data?.meeting),
-      },
-    ],
-    [check],
-  )
+  const unsupportedCount = diagnostics?.config.unsupportedApis.length ?? 0
+  const checkMessage =
+    check.phase === 'checking'
+      ? 'Calling zoomSdk.config()...'
+      : check.phase === 'connected'
+        ? 'Zoom Apps SDK configured successfully.'
+        : check.error
+
+  // The auction session is keyed by the meeting UUID: unlike the
+  // Collaborate UUID (which only the host's start event carries), every
+  // in-meeting participant, including guests, can read it. Outside a
+  // meeting, a per-browser demo key keeps strangers off each other's rows.
+  const meetingUuid = diagnostics?.meeting?.meetingUUID ?? null
+  const sessionKey = meetingUuid ? `mtg-${toSessionKey(meetingUuid)}` : fallbackKey
+  const sessionLabel = meetingUuid ? 'Meeting session' : 'Browser test session'
+
+  // Unique-enough bidder identity: readable name plus a stable
+  // participant-scoped suffix so duplicate screen names stay distinct.
+  const bidderId = useMemo(() => {
+    const name = diagnostics?.user?.screenName?.trim() || 'Guest'
+    const suffix =
+      diagnostics?.user?.participantUUID?.slice(0, 6) ??
+      fallbackKey?.slice(-6) ??
+      'local'
+    return `${name} · ${suffix}`
+  }, [diagnostics, fallbackKey])
+
+  const readiness = [
+    {
+      label: 'React shell',
+      detail: 'Running',
+      ready: true,
+    },
+    {
+      label: 'Zoom SDK config',
+      detail: check.phase === 'connected' ? 'Connected' : 'Waiting for Zoom',
+      ready: check.phase === 'connected',
+    },
+    {
+      label: 'Meeting identity',
+      detail: diagnostics?.meeting ? 'Available' : 'Open inside a meeting',
+      ready: Boolean(diagnostics?.meeting),
+    },
+  ]
 
   async function handleStartCollaborate() {
     setActionMessage('Starting Collaborate Mode...')
@@ -136,7 +159,7 @@ function App() {
         'Start request accepted. Waiting for the Collaborate event...',
       )
     } catch (error) {
-      setActionMessage(`Could not start: ${errorMessage(error)}`)
+      setActionMessage(`Could not start: ${describeError(error)}`)
     }
   }
 
@@ -204,17 +227,17 @@ function App() {
             <p className="context-label" id="diagnostic-title">
               DIAGNOSTIC
             </p>
-            <p>{check.message}</p>
+            <p>{checkMessage}</p>
           </div>
-          {check.data && (
+          {diagnostics && (
             <dl>
               <div>
                 <dt>Client</dt>
-                <dd>{check.data.config.clientVersion}</dd>
+                <dd>{diagnostics.config.clientVersion}</dd>
               </div>
               <div>
                 <dt>Role</dt>
-                <dd>{check.data.user?.role ?? 'Not available'}</dd>
+                <dd>{diagnostics.user?.role ?? 'Not available'}</dd>
               </div>
               <div>
                 <dt>Unsupported</dt>
@@ -253,15 +276,14 @@ function App() {
           </p>
         )}
 
-        <LiveBidSync
-          sessionId={collaborateEvent?.collaborateUUID ?? 'browser-test'}
-          bidderId={
-            check.data?.user?.screenName ??
-            check.data?.user?.role ??
-            'Browser tester'
-          }
-          fromCollaborate={Boolean(collaborateEvent?.collaborateUUID)}
-        />
+        {sessionKey && (
+          <LiveBidSync
+            key={sessionKey}
+            sessionKey={sessionKey}
+            sessionLabel={sessionLabel}
+            bidderId={bidderId}
+          />
+        )}
 
         <footer>
           <span>{zoomCapabilities.length} capabilities declared</span>

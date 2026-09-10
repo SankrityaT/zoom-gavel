@@ -1,20 +1,23 @@
 'use client'
 
 import Image from 'next/image'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import heroAtmosphere from '../../public/hero-atmosphere.png'
-import heroLot from '../../public/hero-lot.png'
-import logoMark from '../../public/logo.png'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import {
+  BID_STEP as BID_INCREMENT,
+  DEMO_OPENING_BID as OPENING_BID,
+  formatUsd,
+} from '@/lib/gavel/demo'
+import heroAtmosphere from './assets/hero-atmosphere.png'
+import heroLot from './assets/hero-lot.png'
+import logoMark from './assets/logo.png'
 
 type BidEvent = { at: number; paddle: string; amount: number }
 
-const OPENING_BID = 950
 const OPENING_CLOCK = 12
 const EXTEND_TO = 12
 const EXTEND_THRESHOLD = 3
 const SOLD_HOLD = 5
 const RESERVE = 1100
-const BID_INCREMENT = 25
 const RING_LENGTH = 2 * Math.PI * 16
 
 const SCRIPT: BidEvent[] = [
@@ -42,17 +45,23 @@ type AuctionState = {
   bidCount: number
 }
 
-function simulate(tick: number): AuctionState {
+// Every animation frame, precomputed in one pass at module load. The
+// interval just indexes into this array: O(1) per tick, no replays.
+const TIMELINE: AuctionState[] = (() => {
+  const bidsByTick = new Map(SCRIPT.map((b) => [b.at, b]))
+  const frames: AuctionState[] = []
   let price = OPENING_BID
   let clock = OPENING_CLOCK
-  let extended = false
   let sold = false
   let bidCount = 0
   const feed: BidEvent[] = []
 
-  for (let t = 1; t <= tick && !sold; t++) {
+  frames.push({ price, clock, feed: [], extended: false, sold: false, bidCount: 0 })
+
+  for (let t = 1; !sold; t++) {
     clock -= 1
-    const bid = SCRIPT.find((b) => b.at === t)
+    let extended = false
+    const bid = bidsByTick.get(t)
     if (bid) {
       price = bid.amount
       bidCount += 1
@@ -61,30 +70,27 @@ function simulate(tick: number): AuctionState {
         clock = EXTEND_TO
         extended = true
       }
-    } else {
-      extended = false
     }
     if (clock <= 0) sold = true
+    frames.push({
+      price,
+      clock: Math.max(clock, 0),
+      feed: feed.slice(0, 5),
+      extended,
+      sold,
+      bidCount,
+    })
   }
 
-  return {
-    price,
-    clock: Math.max(clock, 0),
-    feed: feed.slice(0, 5),
-    extended,
-    sold,
-    bidCount,
-  }
-}
-
-const LOOP_LENGTH = (() => {
-  let t = 1
-  while (!simulate(t).sold) t++
-  return t + SOLD_HOLD
+  for (let i = 0; i < SOLD_HOLD; i++) frames.push(frames[frames.length - 1])
+  return frames
 })()
 
-function formatUsd(amount: number) {
-  return `$${amount.toLocaleString('en-US')}`
+const LOOP_LENGTH = TIMELINE.length
+const STATIC_FRAME = 7
+
+function frameAt(tick: number): AuctionState {
+  return TIMELINE[Math.min(tick, TIMELINE.length - 1)]
 }
 
 function subscribeToMotionPreference(callback: () => void) {
@@ -107,21 +113,50 @@ export default function Hero() {
 
   useEffect(() => {
     if (reducedMotion) return
-    const id = setInterval(() => {
-      setTick((t) => (t + 1) % LOOP_LENGTH)
-    }, 1000)
-    return () => clearInterval(id)
+
+    let id: ReturnType<typeof setInterval> | null = null
+
+    // Only animate while the tab is actually visible: a backgrounded
+    // landing page should cost nothing.
+    const start = () => {
+      if (id === null) {
+        id = setInterval(() => setTick((t) => (t + 1) % LOOP_LENGTH), 1000)
+      }
+    }
+    const stop = () => {
+      if (id !== null) {
+        clearInterval(id)
+        id = null
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') start()
+      else stop()
+    }
+
+    onVisibility()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [reducedMotion])
 
-  const state = useMemo(
-    () => (reducedMotion ? simulate(7) : simulate(tick)),
-    [tick, reducedMotion],
-  )
+  const state = frameAt(reducedMotion ? STATIC_FRAME : tick)
 
   const clockLow = !state.sold && state.clock <= 4
   const lastBid = state.feed[0] ?? null
-  const biddingPaddle = !state.sold && lastBid && tick - lastBid.at < 2 ? lastBid.paddle : null
-  const toastBid = !reducedMotion && !state.sold && lastBid && tick - lastBid.at < 3 ? lastBid : null
+  // All transient "just happened" affordances are motion: freeze them
+  // entirely under reduced motion rather than comparing a live tick
+  // against a static frame.
+  const biddingPaddle =
+    !reducedMotion && !state.sold && lastBid && tick - lastBid.at < 2
+      ? lastBid.paddle
+      : null
+  const toastBid =
+    !reducedMotion && !state.sold && lastBid && tick - lastBid.at < 3
+      ? lastBid
+      : null
   const clockRatio = state.sold ? 0 : state.clock / EXTEND_TO
   const leader = lastBid?.paddle ?? null
   const nextBid = state.price + BID_INCREMENT
@@ -134,7 +169,6 @@ export default function Hero() {
           src={heroAtmosphere}
           alt=""
           fill
-          priority
           sizes="100vw"
           className="hero-atmosphere-image"
         />
@@ -161,7 +195,7 @@ export default function Hero() {
         </a>
       </header>
 
-      <div className="hero-copy">
+      <div className="hero-intro">
         <h1 className="hero-headline">
           The auction never
           <br />

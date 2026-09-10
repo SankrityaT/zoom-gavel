@@ -1,16 +1,23 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getBrowserClient, supabaseConfigured } from '@/lib/gavel/browser'
+import { fetchSession, initSession, postBid } from '@/lib/gavel/client-api'
+import {
+  BID_STEP,
+  DEMO_LOT_NAME,
+  DEMO_OPENING_BID,
+  describeError,
+  formatUsd,
+} from '@/lib/gavel/demo'
 import { toSession, type AuctionSession, type AuctionSessionRow } from '@/lib/gavel/types'
 
-const BID_STEP = 10
-
 type Props = {
-  sessionId: string
+  /** Sanitized session key (base64url), safe for URL paths and realtime filters. */
+  sessionKey: string
+  /** Human label for where this session came from. */
+  sessionLabel: string
   bidderId: string
-  /** True when the id came from a live Collaborate session rather than the browser fallback. */
-  fromCollaborate: boolean
 }
 
 type SyncState =
@@ -19,81 +26,99 @@ type SyncState =
   | { phase: 'live'; session: AuctionSession }
   | { phase: 'error'; message: string }
 
-export default function LiveBidSync({ sessionId, bidderId, fromCollaborate }: Props) {
+export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Props) {
   const [state, setState] = useState<SyncState>(
     supabaseConfigured() ? { phase: 'connecting' } : { phase: 'unconfigured' },
   )
   const [bidMessage, setBidMessage] = useState('')
+  const [placing, setPlacing] = useState(false)
+  // Monotonic guard: never let an older snapshot overwrite a newer one.
+  const latestUpdatedAt = useRef<string>('')
 
+  const applySession = useCallback((session: AuctionSession) => {
+    if (session.updatedAt <= latestUpdatedAt.current) return
+    latestUpdatedAt.current = session.updatedAt
+    setBidMessage('')
+    setState({ phase: 'live', session })
+  }, [])
+
+  // NOTE: mount this component with key={sessionKey}. A key change
+  // remounts it, which is what guarantees stale state from a previous
+  // session can never render against, or bid into, the new one.
   useEffect(() => {
     if (!supabaseConfigured()) return
     let active = true
 
-    async function start() {
+    async function loadOrCreate() {
       try {
-        const initRes = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ init: true, itemName: 'Lot 001 · Glass horse', openingBid: 950 }),
-        })
-        if (!initRes.ok) throw new Error(`init failed (${initRes.status})`)
-        const session = (await initRes.json()) as AuctionSession
-        if (active) setState({ phase: 'live', session })
+        const existing = await fetchSession(sessionKey)
+        const session =
+          existing ??
+          (await initSession(sessionKey, DEMO_LOT_NAME, DEMO_OPENING_BID))
+        if (active) applySession(session)
       } catch (error) {
-        if (active) {
-          setState({
-            phase: 'error',
-            message: error instanceof Error ? error.message : 'could not reach backend',
-          })
-        }
+        if (active) setState({ phase: 'error', message: describeError(error) })
       }
     }
 
-    void start()
-
     const channel = getBrowserClient()
-      .channel(`session-${sessionId}`)
+      .channel(`session-${sessionKey}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'auction_sessions',
-          filter: `uuid=eq.${sessionId}`,
+          filter: `uuid=eq.${sessionKey}`,
         },
         (payload) => {
           if (!active) return
           const row = payload.new as AuctionSessionRow
-          if (row?.uuid) setState({ phase: 'live', session: toSession(row) })
+          if (row?.uuid) applySession(toSession(row))
         },
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (!active) return
+        if (status === 'SUBSCRIBED') {
+          // Fresh subscription (or reconnect after a drop): refetch so any
+          // update missed while disconnected is reconciled.
+          void loadOrCreate()
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setState({
+            phase: 'error',
+            message: `realtime connection ${status === 'TIMED_OUT' ? 'timed out' : 'failed'}`,
+          })
+        }
+      })
 
     return () => {
       active = false
       void getBrowserClient().removeChannel(channel)
     }
-  }, [sessionId])
+  }, [sessionKey, applySession])
 
   const placeBid = useCallback(async () => {
-    if (state.phase !== 'live') return
-    setBidMessage('Placing bid...')
+    if (state.phase !== 'live' || placing) return
+    setPlacing(true)
+    setBidMessage('')
     const amount = state.session.currentBid + BID_STEP
-    const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ amount, bidderId }),
-    })
-    if (res.status === 409) {
-      setBidMessage('Outbid: someone got there first. Try again.')
-      return
+    try {
+      const result = await postBid(sessionKey, amount, bidderId)
+      if (result.outcome === 'rejected') {
+        setBidMessage('Outbid or auction closed. Syncing latest state...')
+        const fresh = await fetchSession(sessionKey)
+        if (fresh) applySession(fresh)
+      } else {
+        applySession(result.session)
+        setBidMessage(`Bid ${formatUsd(amount)} accepted.`)
+      }
+    } catch (error) {
+      setBidMessage(`Bid did not reach the server: ${describeError(error)}`)
+    } finally {
+      setPlacing(false)
     }
-    if (!res.ok) {
-      setBidMessage(`Bid failed (${res.status})`)
-      return
-    }
-    setBidMessage(`Bid $${amount} accepted.`)
-  }, [state, sessionId, bidderId])
+  }, [state, placing, sessionKey, bidderId, applySession])
 
   if (state.phase === 'unconfigured') {
     return (
@@ -101,10 +126,15 @@ export default function LiveBidSync({ sessionId, bidderId, fromCollaborate }: Pr
         <p className="context-label" id="live-sync-title">
           LIVE BID SYNC
         </p>
-        <p>Backend not configured yet: missing Supabase environment variables.</p>
+        <p>
+          Backend not configured: set NEXT_PUBLIC_SUPABASE_URL,
+          NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY.
+        </p>
       </section>
     )
   }
+
+  const closed = state.phase === 'live' && state.session.status === 'closed'
 
   return (
     <section className="live-sync" aria-labelledby="live-sync-title">
@@ -112,7 +142,7 @@ export default function LiveBidSync({ sessionId, bidderId, fromCollaborate }: Pr
         <p className="context-label" id="live-sync-title">
           LIVE BID SYNC
         </p>
-        <span>{fromCollaborate ? 'Collaborate session' : 'Browser test session'}</span>
+        <span>{sessionLabel}</span>
       </div>
 
       {state.phase === 'connecting' && <p>Connecting to session…</p>}
@@ -123,31 +153,38 @@ export default function LiveBidSync({ sessionId, bidderId, fromCollaborate }: Pr
           <dl>
             <div>
               <dt>Session</dt>
-              <dd className="live-sync-id">{sessionId}</dd>
+              <dd className="live-sync-id">{sessionKey}</dd>
             </div>
             <div>
               <dt>Item</dt>
               <dd>{state.session.itemName}</dd>
             </div>
             <div>
-              <dt>Current bid</dt>
+              <dt>{closed ? 'Sold for' : 'Current bid'}</dt>
               <dd className="live-sync-bid" aria-live="polite">
-                ${state.session.currentBid.toLocaleString('en-US')}
+                {formatUsd(state.session.currentBid)}
               </dd>
             </div>
             <div>
-              <dt>Leader</dt>
+              <dt>{closed ? 'Winner' : 'Leader'}</dt>
               <dd>{state.session.lastBidderId ?? 'No bids yet'}</dd>
             </div>
           </dl>
 
-          <button
-            className="button button--primary"
-            type="button"
-            onClick={() => void placeBid()}
-          >
-            Bid ${(state.session.currentBid + BID_STEP).toLocaleString('en-US')}
-          </button>
+          {closed ? (
+            <p className="action-message">This auction has closed.</p>
+          ) : (
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={() => void placeBid()}
+              disabled={placing}
+            >
+              {placing
+                ? 'Placing bid…'
+                : `Bid ${formatUsd(state.session.currentBid + BID_STEP)}`}
+            </button>
+          )}
         </>
       )}
 

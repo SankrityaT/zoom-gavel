@@ -1,18 +1,18 @@
 node_modules/
-dist/
 .next/
 out/
-.env
-.env.*
-!.env.example
-*.local
 *.log
 .DS_Store
+*.tsbuildinfo
+
+# env files: everything ignored except the example
+.env
+.env.*
+*.local
+!.env.example
 
 # local QA screenshots and tool artifacts
 /*.png
 !/public/*.png
 .playwright-mcp/
-*.tsbuildinfo
 .vercel
-.env*

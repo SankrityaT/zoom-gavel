@@ -32,22 +32,23 @@ export async function getSession(uuid: string) {
   return data ? toSession(data) : null
 }
 
+// Single round trip: inserts if absent, returns the existing row
+// untouched otherwise (never resets a live bid).
 export async function ensureSession(
   uuid: string,
   itemName: string,
   openingBid: number,
 ) {
-  const { error } = await getServiceClient()
-    .from('auction_sessions')
-    .upsert(
-      { uuid, item_name: itemName, current_bid: openingBid },
-      { onConflict: 'uuid', ignoreDuplicates: true },
-    )
+  const { data, error } = await getServiceClient()
+    .rpc('ensure_session', { p_uuid: uuid, p_item: itemName, p_opening: openingBid })
+    .select()
 
   if (error) throw new Error(`ensureSession failed: ${error.message}`)
-  const session = await getSession(uuid)
-  if (!session) throw new Error('ensureSession: row missing after upsert')
-  return session
+  const rows = data as AuctionSessionRow[] | null
+  if (!rows || rows.length === 0) {
+    throw new Error('ensureSession: no row returned')
+  }
+  return toSession(rows[0])
 }
 
 // Returns the updated session, or null if the bid was rejected

@@ -152,7 +152,7 @@
   color: #fff;
 }
 
-.hero-copy {
+.hero-intro {
   position: relative;
   z-index: 2;
   text-align: center;
@@ -824,7 +824,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-copy,
+  .hero-intro,
   .zoom-window,
   .gavel-price,
   .gavel-extend,

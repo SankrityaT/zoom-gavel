@@ -51,7 +51,7 @@
 .section-heading,
 .context-strip,
 .actions,
-footer {
+.app-panel footer {
   display: flex;
   align-items: center;
 }
@@ -341,7 +341,7 @@ footer {
   line-height: 1.4;
 }
 
-footer {
+.app-panel footer {
   justify-content: space-between;
   gap: 12px;
   margin-top: 22px;
@@ -398,7 +398,7 @@ footer {
     width: 100%;
   }
 
-  footer {
+  .app-panel footer {
     align-items: flex-start;
     flex-direction: column;
   }
