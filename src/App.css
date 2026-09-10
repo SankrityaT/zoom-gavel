@@ -454,3 +454,52 @@
   letter-spacing: -0.02em;
   color: var(--blue);
 }
+
+.capabilities {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.capability-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.capability-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.capability-list code {
+  flex: 1;
+  font-size: 12px;
+}
+
+.capability-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+  flex: none;
+}
+
+.capability-dot--pass {
+  background: var(--green);
+}
+
+.capability-dot--fail {
+  background: #c23c22;
+}
+
+.capability-status {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}

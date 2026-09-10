@@ -151,6 +151,15 @@ function App() {
     },
   ]
 
+  // Per-capability pass/fail: the SDK config response lists which of the
+  // declared capabilities this client does not support.
+  const capabilityChecks = zoomCapabilities.map((name) => ({
+    name,
+    supported: diagnostics
+      ? !diagnostics.config.unsupportedApis.includes(name)
+      : null,
+  }))
+
   async function handleStartCollaborate() {
     setActionMessage('Starting Collaborate Mode...')
     try {
@@ -249,6 +258,43 @@ function App() {
               </div>
             </dl>
           )}
+        </section>
+
+        <section className="capabilities" aria-labelledby="capabilities-title">
+          <div className="section-heading">
+            <p className="context-label" id="capabilities-title">
+              CAPABILITIES
+            </p>
+            <span>
+              {diagnostics
+                ? `${capabilityChecks.filter((c) => c.supported).length}/${capabilityChecks.length} supported`
+                : 'Pending Zoom connection'}
+            </span>
+          </div>
+          <ul className="capability-list">
+            {capabilityChecks.map((cap) => (
+              <li key={cap.name}>
+                <span
+                  className={
+                    cap.supported === null
+                      ? 'capability-dot'
+                      : cap.supported
+                        ? 'capability-dot capability-dot--pass'
+                        : 'capability-dot capability-dot--fail'
+                  }
+                  aria-hidden="true"
+                />
+                <code>{cap.name}</code>
+                <span className="capability-status">
+                  {cap.supported === null
+                    ? 'pending'
+                    : cap.supported
+                      ? 'pass'
+                      : 'fail'}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <div className="actions">

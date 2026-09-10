@@ -189,6 +189,14 @@ export default function Hero() {
           <a className="navbar-link" href="#demo">
             Live demo
           </a>
+          <a
+            className="navbar-link"
+            href="https://github.com/SankrityaT/zoom-gavel"
+            target="_blank"
+            rel="noreferrer"
+          >
+            GitHub
+          </a>
         </nav>
         <a className="navbar-cta" href="/zoom-test">
           Open in Zoom
