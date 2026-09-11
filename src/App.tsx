@@ -328,6 +328,7 @@ function App() {
             sessionKey={sessionKey}
             sessionLabel={sessionLabel}
             bidderId={bidderId}
+            forcePolling={Boolean(diagnostics)}
           />
         )}
 

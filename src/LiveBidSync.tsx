@@ -18,6 +18,12 @@ type Props = {
   /** Human label for where this session came from. */
   sessionLabel: string
   bidderId: string
+  /**
+   * Skip websockets entirely and poll. Set inside the Zoom client, whose
+   * webview lacks a working WebSocket implementation; detection there is
+   * unreliable, so the caller decides deterministically.
+   */
+  forcePolling?: boolean
 }
 
 type SyncState =
@@ -26,7 +32,12 @@ type SyncState =
   | { phase: 'live'; session: AuctionSession }
   | { phase: 'error'; message: string }
 
-export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Props) {
+export default function LiveBidSync({
+  sessionKey,
+  sessionLabel,
+  bidderId,
+  forcePolling = false,
+}: Props) {
   const [state, setState] = useState<SyncState>(
     supabaseConfigured() ? { phase: 'connecting' } : { phase: 'unconfigured' },
   )
@@ -85,7 +96,7 @@ export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Prop
     let channel: ReturnType<ReturnType<typeof getBrowserClient>['channel']> | null =
       null
 
-    if (typeof WebSocket === 'undefined') {
+    if (forcePolling || typeof WebSocket === 'undefined') {
       startPolling()
     } else {
       try {
@@ -128,7 +139,7 @@ export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Prop
       if (pollId !== null) clearInterval(pollId)
       if (channel) void getBrowserClient().removeChannel(channel)
     }
-  }, [sessionKey, applySession])
+  }, [sessionKey, applySession, forcePolling])
 
   const placeBid = useCallback(async () => {
     if (state.phase !== 'live' || placing) return
@@ -174,7 +185,7 @@ export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Prop
         <p className="context-label" id="live-sync-title">
           LIVE BID SYNC
         </p>
-        <span>{sessionLabel}</span>
+        <span>{forcePolling ? `${sessionLabel} · 1s polling` : sessionLabel}</span>
       </div>
 
       {state.phase === 'connecting' && <p>Connecting to session…</p>}
