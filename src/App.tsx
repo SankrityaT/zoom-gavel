@@ -190,8 +190,8 @@ function App() {
             <span>the room.</span>
           </h1>
           <p className="intro">
-            A clean starting point for validating Zoom context before live
-            bidding state is added.
+            Live bid state syncs across every participant below; SDK
+            diagnostics follow.
           </p>
         </div>
 
@@ -206,6 +206,19 @@ function App() {
           </div>
           <span className="sdk-tag">SDK {zoomSdkVersion}</span>
         </div>
+
+        {/* Mount only after the SDK check settles: forcePolling must be
+            final before any sync transport initializes, because inside the
+            Zoom webview the realtime path must never run at all. */}
+        {check.phase !== 'checking' && sessionKey && (
+          <LiveBidSync
+            key={sessionKey}
+            sessionKey={sessionKey}
+            sessionLabel={sessionLabel}
+            bidderId={bidderId}
+            forcePolling={Boolean(diagnostics)}
+          />
+        )}
 
         <section className="checklist" aria-labelledby="checklist-title">
           <div className="section-heading">
@@ -320,19 +333,6 @@ function App() {
           <p className="action-message" role="status">
             {actionMessage}
           </p>
-        )}
-
-        {/* Mount only after the SDK check settles: forcePolling must be
-            final before any sync transport initializes, because inside the
-            Zoom webview the realtime path must never run at all. */}
-        {check.phase !== 'checking' && sessionKey && (
-          <LiveBidSync
-            key={sessionKey}
-            sessionKey={sessionKey}
-            sessionLabel={sessionLabel}
-            bidderId={bidderId}
-            forcePolling={Boolean(diagnostics)}
-          />
         )}
 
         <footer>

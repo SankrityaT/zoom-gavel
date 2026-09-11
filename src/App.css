@@ -1,13 +1,15 @@
 .app-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 24px;
 }
 
 .app-panel {
   position: relative;
   width: min(100%, 480px);
+  margin: 0 auto;
   min-height: min(820px, calc(100vh - 48px));
   overflow: hidden;
   border: 1px solid rgba(23, 23, 23, 0.18);
@@ -369,14 +371,22 @@
   }
 
   .app-panel {
-    min-height: 100vh;
+    min-height: 100%;
     border: 0;
     border-radius: 0;
     box-shadow: none;
   }
 
   .hero-copy {
-    padding-top: 64px;
+    padding-top: 28px;
+  }
+
+  .hero-copy h1 {
+    font-size: 40px;
+  }
+
+  .hero-copy .intro {
+    display: none;
   }
 }
 
