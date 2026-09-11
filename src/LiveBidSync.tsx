@@ -93,14 +93,14 @@ export default function LiveBidSync({
       }, 1000)
     }
 
-    let channel: ReturnType<ReturnType<typeof getBrowserClient>['channel']> | null =
-      null
+    let teardownRealtime: (() => void) | null = null
 
-    if (forcePolling || typeof WebSocket === 'undefined') {
-      startPolling()
-    } else {
+    async function startRealtime() {
       try {
-        channel = getBrowserClient()
+        // Dynamic import: never evaluated on the polling path.
+        const supabase = await getBrowserClient()
+        if (!active) return
+        const channel = supabase
           .channel(`session-${sessionKey}`)
           .on(
             'postgres_changes',
@@ -129,15 +129,25 @@ export default function LiveBidSync({
               startPolling()
             }
           })
+        teardownRealtime = () => {
+          void supabase.removeChannel(channel)
+        }
+        if (!active) teardownRealtime()
       } catch {
         startPolling()
       }
     }
 
+    if (forcePolling || typeof WebSocket === 'undefined') {
+      startPolling()
+    } else {
+      void startRealtime()
+    }
+
     return () => {
       active = false
       if (pollId !== null) clearInterval(pollId)
-      if (channel) void getBrowserClient().removeChannel(channel)
+      teardownRealtime?.()
     }
   }, [sessionKey, applySession, forcePolling])
 

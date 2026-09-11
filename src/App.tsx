@@ -322,7 +322,10 @@ function App() {
           </p>
         )}
 
-        {sessionKey && (
+        {/* Mount only after the SDK check settles: forcePolling must be
+            final before any sync transport initializes, because inside the
+            Zoom webview the realtime path must never run at all. */}
+        {check.phase !== 'checking' && sessionKey && (
           <LiveBidSync
             key={sessionKey}
             sessionKey={sessionKey}
