@@ -48,6 +48,7 @@ export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Prop
   useEffect(() => {
     if (!supabaseConfigured()) return
     let active = true
+    let pollId: ReturnType<typeof setInterval> | null = null
 
     async function loadOrCreate() {
       try {
@@ -61,40 +62,71 @@ export default function LiveBidSync({ sessionKey, sessionLabel, bidderId }: Prop
       }
     }
 
-    const channel = getBrowserClient()
-      .channel(`session-${sessionKey}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'auction_sessions',
-          filter: `uuid=eq.${sessionKey}`,
-        },
-        (payload) => {
-          if (!active) return
-          const row = payload.new as AuctionSessionRow
-          if (row?.uuid) applySession(toSession(row))
-        },
-      )
-      .subscribe((status) => {
+    // Fallback for environments without websockets, notably the Zoom
+    // desktop webview, which does not expose the WebSocket global at all.
+    // Fast polling is a documented MVP shortcut there, not the default:
+    // regular browsers still get true push.
+    function startPolling() {
+      if (!active || pollId !== null) return
+      console.info('LiveBidSync: websockets unavailable, using 1s polling')
+      void loadOrCreate()
+      pollId = setInterval(() => {
         if (!active) return
-        if (status === 'SUBSCRIBED') {
-          // Fresh subscription (or reconnect after a drop): refetch so any
-          // update missed while disconnected is reconciled.
-          void loadOrCreate()
-        }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setState({
-            phase: 'error',
-            message: `realtime connection ${status === 'TIMED_OUT' ? 'timed out' : 'failed'}`,
+        fetchSession(sessionKey)
+          .then((session) => {
+            if (active && session) applySession(session)
           })
-        }
-      })
+          .catch(() => {
+            // Transient poll failures are retried on the next tick.
+          })
+      }, 1000)
+    }
+
+    let channel: ReturnType<ReturnType<typeof getBrowserClient>['channel']> | null =
+      null
+
+    if (typeof WebSocket === 'undefined') {
+      startPolling()
+    } else {
+      try {
+        channel = getBrowserClient()
+          .channel(`session-${sessionKey}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'auction_sessions',
+              filter: `uuid=eq.${sessionKey}`,
+            },
+            (payload) => {
+              if (!active) return
+              const row = payload.new as AuctionSessionRow
+              if (row?.uuid) applySession(toSession(row))
+            },
+          )
+          .subscribe((status) => {
+            if (!active) return
+            if (status === 'SUBSCRIBED') {
+              // Fresh subscription (or reconnect after a drop): refetch so
+              // any update missed while disconnected is reconciled.
+              void loadOrCreate()
+            }
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              // Realtime is unusable here: degrade to polling instead of
+              // showing a dead panel.
+              startPolling()
+            }
+          })
+      } catch {
+        startPolling()
+      }
+    }
 
     return () => {
       active = false
-      void getBrowserClient().removeChannel(channel)
+      if (pollId !== null) clearInterval(pollId)
+      if (channel) void getBrowserClient().removeChannel(channel)
     }
   }, [sessionKey, applySession])
 

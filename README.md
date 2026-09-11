@@ -65,6 +65,10 @@ Bid state lives in Supabase Postgres, one row per Zoom Collaborate UUID in
   service role key. Bids are accepted atomically by the `place_bid` SQL
   function: only a strictly higher bid on an open session wins, so
   concurrent bids cannot clobber each other. Rejected bids return 409.
+- The Zoom desktop webview does not expose the WebSocket global, so
+  inside Zoom the panel automatically degrades to 1-second polling of
+  the GET endpoint (a documented MVP shortcut, not the default path).
+  Regular browsers get true push.
 - Reads and push: clients hold a Supabase Realtime websocket subscription
   (anon key, read-only via RLS) filtered to their session row. Every
   accepted bid is pushed to all participants instantly. No client polling.
