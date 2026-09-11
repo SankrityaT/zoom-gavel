@@ -188,7 +188,9 @@ export default function LiveBidSync({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      setBidMessage(`Copy failed. Link: ${shareUrl}`)
+      // Zoom's webview blocks the clipboard API; the field below stays
+      // selectable so the link can still be copied by hand.
+      setBidMessage('Clipboard blocked here. Tap the link field to select it.')
     }
   }
 
@@ -262,14 +264,25 @@ export default function LiveBidSync({
 
       {state.phase === 'live' && (
         <div className="live-sync-share">
-          <span className="live-sync-share-label">Bid from any browser</span>
-          <button
-            className="button button--secondary"
-            type="button"
-            onClick={() => void copyShareLink()}
-          >
-            {copied ? 'Link copied' : 'Copy join link'}
-          </button>
+          <div className="live-sync-share-row">
+            <span className="live-sync-share-label">Bid from any browser</span>
+            <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => void copyShareLink()}
+            >
+              {copied ? 'Link copied' : 'Copy join link'}
+            </button>
+          </div>
+          <input
+            className="live-sync-share-input"
+            type="text"
+            readOnly
+            value={shareUrl}
+            aria-label="Join link for this session"
+            onFocus={(event) => event.currentTarget.select()}
+            onClick={(event) => event.currentTarget.select()}
+          />
         </div>
       )}
 

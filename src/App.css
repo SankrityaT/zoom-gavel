@@ -516,12 +516,31 @@
 
 .live-sync-share {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px dashed var(--line);
+}
+
+.live-sync-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-sync-share-input {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: rgba(23, 23, 23, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .live-sync-share-label {
