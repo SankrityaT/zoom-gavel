@@ -43,6 +43,7 @@ export default function LiveBidSync({
   )
   const [bidMessage, setBidMessage] = useState('')
   const [placing, setPlacing] = useState(false)
+  const [copied, setCopied] = useState(false)
   // Monotonic guard: never let an older snapshot overwrite a newer one.
   const latestUpdatedAt = useRef<string>('')
 
@@ -173,6 +174,24 @@ export default function LiveBidSync({
     }
   }, [state, placing, sessionKey, bidderId, applySession])
 
+  // Anyone can bid on this exact session from a plain browser (phones,
+  // guests, a second laptop) without Zoom's mobile Collaborate
+  // limitations getting in the way.
+  const shareUrl =
+    typeof window === 'undefined'
+      ? ''
+      : `${window.location.origin}/zoom-test?session=${encodeURIComponent(sessionKey)}`
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setBidMessage(`Copy failed. Link: ${shareUrl}`)
+    }
+  }
+
   if (state.phase === 'unconfigured') {
     return (
       <section className="live-sync" aria-labelledby="live-sync-title">
@@ -239,6 +258,19 @@ export default function LiveBidSync({
             </button>
           )}
         </>
+      )}
+
+      {state.phase === 'live' && (
+        <div className="live-sync-share">
+          <span className="live-sync-share-label">Bid from any browser</span>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void copyShareLink()}
+          >
+            {copied ? 'Link copied' : 'Copy join link'}
+          </button>
+        </div>
       )}
 
       {bidMessage && (

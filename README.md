@@ -88,6 +88,18 @@ browser each browser gets its own private demo session (persisted in
 localStorage), so two tabs in one browser share an auction but strangers
 never share a row.
 
+Testing with other people. Zoom's mobile clients never show a Collaborate
+join prompt (participants are dropped into a screen-share mirror of the
+host's app; see https://devforum.zoom.us/t/collaborate-mode-with-ios/82051),
+and development apps cannot be installed on other accounts without a Beta
+Test. So the panel offers a join link: the host taps "Copy join link" and
+anyone can open `/zoom-test?session=<key>` in any browser (phones
+included) to bid on the same live session. To test Guest Mode on a second
+desktop, that machine needs Zoom's local testing flag first:
+`defaults write ZoomChat enableGuestModeTesting true` on macOS, or
+`[ZoomChat] enableGuestModeTesting=true` in `%appdata%/Zoom/data/Zoom.us.ini`
+on Windows.
+
 Known gaps, tracked deliberately for later phases: no server-side host
 role verification, no rate limiting, sessions never expire, and bidder
 identity is client-asserted. The bid ceiling is $1,000,000, enforced in

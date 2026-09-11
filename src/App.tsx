@@ -37,6 +37,19 @@ function getFallbackKey() {
   return cachedFallbackKey
 }
 
+// Optional ?session=<key> lets a plain browser join a specific auction,
+// e.g. a phone bidding on a live meeting's session via the host's share
+// link. Keys are base64url or demo ids, so anything else is rejected.
+const SESSION_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/
+let cachedJoinKey: string | null | undefined
+function getJoinKey() {
+  if (cachedJoinKey === undefined) {
+    const raw = new URLSearchParams(window.location.search).get('session')
+    cachedJoinKey = raw && SESSION_KEY_PATTERN.test(raw) ? raw : null
+  }
+  return cachedJoinKey
+}
+
 function App() {
   const [check, setCheck] = useState<CheckState>({ phase: 'checking' })
   const [collaborateEvent, setCollaborateEvent] =
@@ -46,6 +59,11 @@ function App() {
   const fallbackKey = useSyncExternalStore(
     () => () => {},
     getFallbackKey,
+    () => null,
+  )
+  const joinKey = useSyncExternalStore(
+    () => () => {},
+    getJoinKey,
     () => null,
   )
 
@@ -119,8 +137,14 @@ function App() {
   // in-meeting participant, including guests, can read it. Outside a
   // meeting, a per-browser demo key keeps strangers off each other's rows.
   const meetingUuid = diagnostics?.meeting?.meetingUUID ?? null
-  const sessionKey = meetingUuid ? `mtg-${toSessionKey(meetingUuid)}` : fallbackKey
-  const sessionLabel = meetingUuid ? 'Meeting session' : 'Browser test session'
+  const sessionKey = meetingUuid
+    ? `mtg-${toSessionKey(meetingUuid)}`
+    : (joinKey ?? fallbackKey)
+  const sessionLabel = meetingUuid
+    ? 'Meeting session'
+    : joinKey
+      ? 'Joined session'
+      : 'Browser test session'
 
   // Unique-enough bidder identity: readable name plus a stable
   // participant-scoped suffix so duplicate screen names stay distinct.

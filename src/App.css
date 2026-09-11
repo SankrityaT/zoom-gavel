@@ -513,3 +513,18 @@
   text-transform: uppercase;
   color: var(--muted);
 }
+
+.live-sync-share {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+
+.live-sync-share-label {
+  font-size: 12px;
+  color: var(--muted);
+}
