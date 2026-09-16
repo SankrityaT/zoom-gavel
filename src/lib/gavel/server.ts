@@ -1,5 +1,14 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { toSession, type AuctionSessionRow } from './types'
+import type { Viewer } from './auth'
+import {
+  toBid,
+  toSessionInfo,
+  type BidReason,
+  type BidRow,
+  type RoundReason,
+  type SessionRow,
+  type SessionState,
+} from './types'
 
 // Service-role client, server only. Lazy so `next build` succeeds before
 // env vars exist; never import this from client components.
@@ -14,51 +23,111 @@ function getServiceClient(): SupabaseClient {
         'Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
       )
     }
-    client = createClient(url, serviceKey, {
-      auth: { persistSession: false },
-    })
+    client = createClient(url, serviceKey, { auth: { persistSession: false } })
   }
   return client
 }
 
-export async function getSession(uuid: string) {
-  const { data, error } = await getServiceClient()
-    .from('auction_sessions')
-    .select('*')
-    .eq('uuid', uuid)
-    .maybeSingle<AuctionSessionRow>()
-
-  if (error) throw new Error(`getSession failed: ${error.message}`)
-  return data ? toSession(data) : null
+async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+  const { data, error } = await getServiceClient().rpc(fn, args)
+  if (error) throw new Error(`${fn} failed: ${error.message}`)
+  return data as T
 }
 
-// Single round trip: inserts if absent, returns the existing row
-// untouched otherwise (never resets a live bid).
-export async function ensureSession(
+type RawState = { session: SessionRow; bids: BidRow[]; server_now: string } | null
+
+export async function getRawState(uuid: string) {
+  return rpc<RawState>('session_state', { p_uuid: uuid })
+}
+
+export async function ensureSession(uuid: string, itemName: string, openingBid: number) {
+  const row = await rpc<SessionRow | null>('ensure_session', {
+    p_uuid: uuid,
+    p_item: itemName,
+    p_opening: openingBid,
+  })
+  if (!row) throw new Error('ensureSession: no row returned')
+  return row
+}
+
+export type BidOutcome =
+  | { ok: true; extended: boolean; bid_id: number; session: SessionRow }
+  | { ok: false; reason: BidReason; min_amount?: number; session?: SessionRow }
+
+export async function placeBid(
   uuid: string,
-  itemName: string,
-  openingBid: number,
+  amount: number,
+  bidderKey: string,
+  bidderName: string,
+  verified: boolean,
 ) {
-  const { data, error } = await getServiceClient()
-    .rpc('ensure_session', { p_uuid: uuid, p_item: itemName, p_opening: openingBid })
-    .select()
-
-  if (error) throw new Error(`ensureSession failed: ${error.message}`)
-  const rows = data as AuctionSessionRow[] | null
-  if (!rows || rows.length === 0) {
-    throw new Error('ensureSession: no row returned')
-  }
-  return toSession(rows[0])
+  return rpc<BidOutcome>('place_bid', {
+    p_uuid: uuid,
+    p_amount: amount,
+    p_bidder_key: bidderKey,
+    p_bidder_name: bidderName,
+    p_verified: verified,
+  })
 }
 
-// Returns the updated session, or null if the bid was rejected
-// (lower than current, session closed, or unknown uuid).
-export async function placeBid(uuid: string, amount: number, bidderId: string) {
-  const { data, error } = await getServiceClient()
-    .rpc('place_bid', { p_uuid: uuid, p_amount: amount, p_bidder: bidderId })
-    .select()
+export type RoundOutcome =
+  | { ok: true; session: SessionRow }
+  | { ok: false; reason: RoundReason; session?: SessionRow }
 
-  if (error) throw new Error(`placeBid failed: ${error.message}`)
-  const rows = data as AuctionSessionRow[] | null
-  return rows && rows.length > 0 ? toSession(rows[0]) : null
+export type StartRoundForm = {
+  itemName: string
+  openingBid: number
+  reservePrice: number | null
+  seconds: number
+  extendWindowSeconds: number
+  extendBySeconds: number
+}
+
+export async function startRound(uuid: string, hostKey: string | null, form: StartRoundForm) {
+  return rpc<RoundOutcome>('start_round', {
+    p_uuid: uuid,
+    p_host_key: hostKey,
+    p_item: form.itemName,
+    p_opening: form.openingBid,
+    p_reserve: form.reservePrice,
+    p_seconds: form.seconds,
+    p_extend_window: form.extendWindowSeconds,
+    p_extend_by: form.extendBySeconds,
+  })
+}
+
+export async function stopRound(uuid: string, hostKey: string | null) {
+  return rpc<RoundOutcome>('stop_round', { p_uuid: uuid, p_host_key: hostKey })
+}
+
+// Assembles the client-facing state: camelCase session, ladder, server
+// clock, and what this viewer may do. host_key is consumed here and never
+// sent to the client.
+export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionState {
+  const session = toSessionInfo(raw.session)
+  const isHost =
+    viewer.verified &&
+    viewer.bidderKey !== null &&
+    raw.session.host_key !== null &&
+    viewer.bidderKey === raw.session.host_key
+  const canControl =
+    session.sandbox ||
+    (viewer.verified && viewer.inThisMeeting && (!session.hostClaimed || isHost))
+  return {
+    session,
+    bids: raw.bids.map(toBid),
+    serverNow: raw.server_now,
+    viewer: {
+      verified: viewer.verified,
+      bidderKey: viewer.bidderKey,
+      isHost,
+      canControl,
+      inThisMeeting: viewer.inThisMeeting,
+    },
+  }
+}
+
+export async function getState(uuid: string, viewer: Viewer) {
+  const raw = await getRawState(uuid)
+  return raw ? buildState(raw, viewer) : null
 }

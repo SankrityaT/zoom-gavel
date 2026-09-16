@@ -35,3 +35,12 @@ export function describeError(error: unknown) {
     return 'Unknown error'
   }
 }
+
+// Public identity for unverified bidders: a non-secret hash of the
+// client-chosen name. Isomorphic so the browser can recognise its own bids.
+export async function anonBidderKey(bidderName: string) {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`anon:${bidderName}`)),
+  )
+  return 'a' + Array.from(digest.slice(0, 7), (b) => b.toString(16).padStart(2, '0')).join('')
+}

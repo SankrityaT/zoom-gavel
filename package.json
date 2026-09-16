@@ -8,7 +8,8 @@
     "build": "next build",
     "lint": "eslint .",
     "start": "next start -p 5173",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:race": "node scripts/race-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

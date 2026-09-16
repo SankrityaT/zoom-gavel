@@ -1,0 +1,387 @@
+/* In-meeting auction panel. Port of the marketing hero's .gavel-* design
+   onto the App.css token set (no marketing fonts on /zoom-test). */
+
+.panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.panel-lot-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 10px;
+}
+
+.panel-lot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.panel-lot-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.panel-lot-meta {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.panel-badge {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.panel-badge--met {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.panel-badge--verified {
+  color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 45%, transparent);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+
+.panel-price-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.panel-price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 36px;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  animation: panel-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes panel-pop {
+  0% { transform: scale(1.06); color: var(--blue); }
+  100% { transform: scale(1); }
+}
+
+.panel-winner {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+}
+
+.panel-winner--closed {
+  color: var(--blue);
+}
+
+.panel-ladder {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 2px 0 2px 5px;
+  display: grid;
+  gap: 8px;
+}
+
+.panel-rung {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  animation: panel-slide 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes panel-slide {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+.panel-rung-dot {
+  position: relative;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1.5px solid var(--muted);
+  flex: none;
+}
+
+.panel-rung:not(:last-child) .panel-rung-dot::after {
+  content: '';
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1.5px;
+  height: 18px;
+  background: var(--line);
+}
+
+.panel-rung--leader {
+  font-weight: 600;
+}
+
+.panel-rung--leader .panel-rung-dot {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.panel-rung-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-rung-tag {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.panel-rung:nth-child(2) { opacity: 0.75; }
+.panel-rung:nth-child(3) { opacity: 0.6; }
+.panel-rung:nth-child(n + 4) { opacity: 0.45; }
+
+.panel-rung--opening {
+  color: var(--muted);
+  opacity: 0.55;
+  animation: none;
+}
+
+.panel-action-block {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-bottom: 12px;
+}
+
+.panel-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-ring {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  color: var(--blue);
+}
+
+.panel-ring--low {
+  color: var(--orange);
+}
+
+.panel-ring-track {
+  fill: none;
+  stroke: rgba(23, 23, 23, 0.12);
+  stroke-width: 3.4;
+}
+
+.panel-ring-fill {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s linear, stroke 0.3s ease;
+}
+
+.panel-ring em {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.panel-ring--low em {
+  color: var(--orange);
+  animation: panel-blink 1s steps(2, jump-none) infinite;
+}
+
+@keyframes panel-blink {
+  50% { opacity: 0.45; }
+}
+
+.panel-bid-button {
+  flex: 1;
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 13px 0;
+  border-radius: 12px;
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--blue) 30%, transparent);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.panel-bid-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.panel-bid-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.panel-secondary-button {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.panel-secondary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.panel-custom {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.panel-custom input,
+.panel-host-form input {
+  flex: 1;
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(23, 23, 23, 0.03);
+  color: var(--ink);
+}
+
+.panel-extend {
+  margin: 10px 0 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  border-radius: 8px;
+  padding: 6px 8px;
+  animation: panel-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.panel-closed {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding: 16px 0 12px;
+  animation: panel-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.panel-sold-word {
+  font-weight: 800;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--blue);
+  transform: rotate(-4deg);
+}
+
+.panel-sold-price {
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.panel-not-sold {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.panel-host {
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+  margin-bottom: 4px;
+}
+
+.panel-host-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.panel-host-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel-host-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 420px) {
+  .panel-host-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-price,
+  .panel-rung,
+  .panel-extend,
+  .panel-closed {
+    animation: none;
+  }
+
+  .panel-ring--low em {
+    animation: none;
+  }
+
+  .panel-ring-fill {
+    transition: none;
+  }
+}

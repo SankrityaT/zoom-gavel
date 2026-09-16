@@ -27,7 +27,7 @@ const contentSecurityPolicy = [
 ].join('; ')
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['gavel.sankrityat.com'],
+  allowedDevOrigins: ['gavel.sankrityat.com', '127.0.0.1'],
   poweredByHeader: false,
   async headers() {
     return [

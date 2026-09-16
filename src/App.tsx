@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import LiveBidSync from './LiveBidSync'
+import AuctionPanel from './panel/AuctionPanel'
 import { describeError, toSessionKey } from '@/lib/gavel/demo'
 import type { CheckState } from './zoom'
 import {
@@ -235,12 +235,13 @@ function App() {
             final before any sync transport initializes, because inside the
             Zoom webview the realtime path must never run at all. */}
         {check.phase !== 'checking' && sessionKey && (
-          <LiveBidSync
+          <AuctionPanel
             key={sessionKey}
             sessionKey={sessionKey}
             sessionLabel={sessionLabel}
-            bidderId={bidderId}
+            bidderName={bidderId}
             forcePolling={Boolean(diagnostics)}
+            roleHint={diagnostics?.user?.role ?? null}
           />
         )}
 
