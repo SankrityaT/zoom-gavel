@@ -16,6 +16,13 @@ type Props = {
 }
 
 const RING_LENGTH = 2 * Math.PI * 16
+
+// Names are client-chosen even for verified bidders, so every name carries
+// a short server-derived key suffix: two "Alice"s are visibly different.
+function labelFor(name: string, bidderKey: string, selfKey: string | null) {
+  if (selfKey !== null && bidderKey === selfKey) return 'You'
+  return `${name} #${bidderKey.slice(-4)}`
+}
 const EXTENSION_TOAST_MS = 2500
 
 export default function AuctionPanel({
@@ -92,10 +99,10 @@ function LivePanel({
               : session.status === 'closed'
                 ? youLead
                   ? 'You won the lot'
-                  : `${session.leader.name} won the lot`
+                  : `${labelFor(session.leader.name, session.leader.bidderKey, auction.selfKey)} won the lot`
                 : youLead
                   ? 'You are winning'
-                  : `${session.leader.name} is winning`}
+                  : `${labelFor(session.leader.name, session.leader.bidderKey, auction.selfKey)} is winning`}
         </span>
       </div>
 
@@ -148,7 +155,7 @@ function BidLadder({ state, selfKey }: { state: SessionState; selfKey: string | 
         <li key={bid.id} className={index === 0 ? 'panel-rung panel-rung--leader' : 'panel-rung'}>
           <span className="panel-rung-dot" aria-hidden="true" />
           <span className="panel-rung-name">
-            {selfKey !== null && bid.bidderKey === selfKey ? 'You' : bid.bidderName}
+            {labelFor(bid.bidderName, bid.bidderKey, selfKey)}
             {!bid.verified && <span className="panel-rung-tag"> · unverified</span>}
           </span>
           <span className="panel-rung-amount">{formatUsd(bid.amount)}</span>

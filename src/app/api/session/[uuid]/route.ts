@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
 import { MAX_BID } from '@/lib/gavel/demo'
 import { ensureSession, getState, placeBid } from '@/lib/gavel/server'
-import { anonBidderKey, boundedInt, boundedString } from '@/lib/gavel/validate'
+import { anonBidderKey, boundedInt, boundedString, rejectCrossSite } from '@/lib/gavel/validate'
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -36,6 +36,8 @@ export async function POST(
 ) {
   const { uuid } = await params
   if (!uuid || uuid.length > 200) return badRequest('invalid session key')
+  const crossSite = rejectCrossSite(request)
+  if (crossSite) return NextResponse.json({ error: crossSite }, { status: 403 })
 
   let body: unknown
   try {

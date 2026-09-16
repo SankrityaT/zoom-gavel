@@ -88,6 +88,17 @@ upgrade is the `meeting.started` webhook, which carries the real host id.
 Sandbox sessions (demo and join-link keys) are ownerless so anyone can run
 the clock, which is what the concurrency tests rely on.
 
+Security model, verified by review and black-box testing. The public anon
+key cannot read or list any table (reads go only through the API, which
+requires a session key) and cannot call any SQL function. Realtime uses
+private per-session broadcast topics fed by triggers, so you can receive
+a session's updates only if you already know its key. POST routes reject
+cross-origin browser requests and non-JSON bodies (the identity cookie is
+SameSite=None because the Zoom web client embeds the app). Every displayed
+name carries a server-derived `#xxxx` key suffix, since names are
+client-chosen even for verified bidders. A host claim can be reclaimed
+after two hours of inactivity so a stale claim never bricks a session.
+
 Testing. `BASE_URL=http://127.0.0.1:5173 npm run test:race` runs the
 concurrency suite (bid storms, identical amounts, expiry boundary,
 colliding extensions, host stop vs in-flight bids, validation). Add

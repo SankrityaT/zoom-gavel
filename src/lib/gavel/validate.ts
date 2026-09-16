@@ -15,3 +15,19 @@ export function boundedString(value: unknown, max: number): string | null {
   if (!trimmed || trimmed.length > max) return null
   return trimmed
 }
+
+// The identity cookie is SameSite=None (the Zoom web client embeds the app
+// cross-site), so browser POSTs must prove same-origin: reject a foreign
+// Origin header and any non-JSON body. Non-browser clients send no Origin.
+export function rejectCrossSite(request: Request): string | null {
+  const contentType = request.headers.get('content-type') ?? ''
+  if (!contentType.toLowerCase().startsWith('application/json')) {
+    return 'content-type must be application/json'
+  }
+  const origin = request.headers.get('origin')
+  if (origin) {
+    const expected = new URL(request.url).origin
+    if (origin !== expected) return 'cross-site request rejected'
+  }
+  return null
+}

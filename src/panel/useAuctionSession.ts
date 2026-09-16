@@ -181,36 +181,24 @@ export function useAuctionSession(
       try {
         const supabase = await getBrowserClient()
         if (!active) return
+        // Private per-session broadcast topic fed by DB triggers. Only someone
+        // who already knows the key can subscribe; tables are not readable.
         const channel = supabase
-          .channel(`auction-${sessionKey}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'auction_sessions',
-              filter: `uuid=eq.${sessionKey}`,
-            },
-            (payload) => {
-              if (!active) return
-              const row = payload.new as SessionRow
-              if (row?.uuid) applySessionRow(row)
-            },
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'auction_bids',
-              filter: `session_uuid=eq.${sessionKey}`,
-            },
-            (payload) => {
-              if (!active) return
-              const row = payload.new as BidRow & { round_no: number }
-              if (row?.id) applyBidRow(row, row.round_no)
-            },
-          )
+          .channel(`session:${sessionKey}`, { config: { private: true } })
+          .on('broadcast', { event: 'UPDATE' }, (message) => {
+            if (!active) return
+            const payload = message.payload as { table?: string; record?: SessionRow }
+            if (payload?.table === 'auction_sessions' && payload.record?.uuid) {
+              applySessionRow(payload.record)
+            }
+          })
+          .on('broadcast', { event: 'INSERT' }, (message) => {
+            if (!active) return
+            const payload = message.payload as { table?: string; record?: BidRow & { round_no: number } }
+            if (payload?.table === 'auction_bids' && payload.record?.id) {
+              applyBidRow(payload.record, payload.record.round_no)
+            }
+          })
           .subscribe((status) => {
             if (!active) return
             if (status === 'SUBSCRIBED') void loadOrCreate()
