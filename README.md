@@ -73,7 +73,11 @@ function limit. Any failure drops a rung (realtime to SSE to 1s polling).
 The panel header names the transport in use (`live`, `live stream`, or
 `1s polling`), and the diagnostics block has a transport probe that
 reports whether WebSocket, EventSource, and a raw Supabase wss handshake
-work in the current client.
+work in the current client. Functions are pinned to `pdx1` in
+`vercel.json`, next to the Supabase project in us-west-2: every bid is
+several sequential database calls, and running them cross-country tripled
+bid latency. Measured on production, bid to screen on the SSE path is
+160 to 370 ms.
 
 Rounds. A session is `idle` until the host starts a round, which sets the
 item, opening bid, optional reserve, and a server-side `ends_at`. Bids are
