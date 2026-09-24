@@ -1,0 +1,10 @@
+# CLI deploys upload the working tree and do not read .gitignore.
+# Keep secrets, local context, and QA artifacts out of deployment source.
+.env
+.env.*
+!.env.example
+*.local
+.context
+.playwright-mcp
+/*.png
+*.tsbuildinfo
