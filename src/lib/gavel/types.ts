@@ -10,6 +10,7 @@ export type SessionRow = {
   status: SessionStatus
   updated_at: string
   host_key: string | null
+  host_verified?: boolean
   round_no: number
   opening_bid: number
   reserve_price: number | null
@@ -45,6 +46,8 @@ export type SessionInfo = {
   extendWindowSeconds: number
   extendBySeconds: number
   hostClaimed: boolean
+  /** Host set from Zoom's meeting.started webhook, not first claim. */
+  hostVerified: boolean
   sandbox: boolean
   updatedAt: string
 }
@@ -73,8 +76,21 @@ export type SessionState = {
   viewer: ViewerInfo
 }
 
-export type BidReason = 'not_found' | 'not_open' | 'expired' | 'too_low' | 'over_max'
-export type RoundReason = 'bad_seconds' | 'unverified' | 'not_host' | 'round_open' | 'not_open' | 'not_found'
+export type BidReason =
+  | 'not_found'
+  | 'not_open'
+  | 'expired'
+  | 'too_low'
+  | 'over_max'
+  | 'rate_limited'
+export type RoundReason =
+  | 'bad_seconds'
+  | 'unverified'
+  | 'not_host'
+  | 'round_open'
+  | 'not_open'
+  | 'not_found'
+  | 'rate_limited'
 
 export function isSandboxKey(sessionKey: string) {
   return !sessionKey.startsWith('mtg-')
@@ -102,6 +118,7 @@ export function toSessionInfo(row: SessionRow): SessionInfo {
     extendWindowSeconds: row.extend_window_seconds,
     extendBySeconds: row.extend_by_seconds,
     hostClaimed: row.host_key !== null,
+    hostVerified: row.host_verified === true,
     sandbox: isSandboxKey(row.uuid),
     updatedAt: row.updated_at,
   }

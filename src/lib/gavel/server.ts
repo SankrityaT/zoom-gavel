@@ -100,6 +100,24 @@ export async function stopRound(uuid: string, hostKey: string | null) {
   return rpc<RoundOutcome>('stop_round', { p_uuid: uuid, p_host_key: hostKey })
 }
 
+// Seconds until the tightest exhausted bucket resets, or 0 when allowed.
+export async function rateLimitHit(
+  rules: { bucket: string; limit: number; windowSeconds: number }[],
+) {
+  return rpc<number>('rate_limit_hit', {
+    p_buckets: rules.map((r) => r.bucket),
+    p_limits: rules.map((r) => r.limit),
+    p_windows: rules.map((r) => r.windowSeconds),
+  })
+}
+
+export async function setMeetingHost(uuid: string, hostKey: string) {
+  return rpc<{ ok: boolean; reason?: string }>('set_meeting_host', {
+    p_uuid: uuid,
+    p_host_key: hostKey,
+  })
+}
+
 // Assembles the client-facing state: camelCase session, ladder, server
 // clock, and what this viewer may do. host_key is consumed here and never
 // sent to the client.

@@ -3,6 +3,7 @@
 //
 //   BASE_URL=http://127.0.0.1:5173 npm run test:race
 //   BASE_URL=... SESSION_SECRET=<same as the server> npm run test:race   # also runs S11/S12
+//   ... ZOOM_WEBHOOK_SECRET_TOKEN=<same as the server>                    # also runs S14
 //
 // No dependencies. Uses fresh sandbox keys per scenario; S11/S12 mint valid
 // identity cookies when SESSION_SECRET is provided.
@@ -15,6 +16,7 @@ if (!BASE_URL) {
   process.exit(2)
 }
 const SESSION_SECRET = process.env.SESSION_SECRET ?? null
+const WEBHOOK_TOKEN = process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? null
 
 let failures = 0
 const results = []
@@ -268,6 +270,135 @@ if (SESSION_SECRET) {
   })
 } else {
   console.log('SKIP  S11/S12 host rule (set SESSION_SECRET to run)')
+}
+
+await scenario('S13', 'rate limit on one bidder', async () => {
+  const k = key()
+  await init(k)
+  await start(k)
+  // Per-bidder bucket: 10 bids per 5s. 14 rapid bids from one name must
+  // see at least one 429 with Retry-After, and the session stays sane.
+  const rs = await Promise.all(Array.from({ length: 14 }, (_, i) => bid(k, 100 + 25 * i, 'spammer')))
+  const h = histogram(rs)
+  check('S13 some 429', (h[429] ?? 0) >= 1, JSON.stringify(h))
+  check('S13 only 200/409/429', (h[200] ?? 0) + (h[409] ?? 0) + (h[429] ?? 0) === 14, JSON.stringify(h))
+  const limited = rs.find((r) => r.status === 429)
+  check('S13 429 carries retryAfter', !limited || (limited.json?.reason === 'rate_limited' && limited.json.retryAfter >= 1))
+  const other = await bid(k, 5000, 'someone-else')
+  check('S13 other bidder unaffected', other.status === 200, String(other.status))
+})
+
+// Reads SSE events from a fetch body until `want` returns true or timeout.
+async function readStream(k, { timeoutMs = 15000, cookie } = {}, want) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const events = []
+  try {
+    const res = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/stream`, {
+      headers: cookie ? { cookie } : {},
+      signal: controller.signal,
+    })
+    if (!res.ok || !res.body) return { status: res.status, events }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let idx
+      while ((idx = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, idx)
+        buffer = buffer.slice(idx + 2)
+        const name = /^event: (.*)$/m.exec(block)?.[1]
+        const data = /^data: (.*)$/m.exec(block)?.[1]
+        if (name) {
+          events.push({ name, data: data ? JSON.parse(data) : null, at: Date.now() })
+          if (want(events)) {
+            controller.abort()
+            return { status: res.status, events }
+          }
+        }
+      }
+    }
+    return { status: res.status, events }
+  } catch {
+    return { status: 0, events }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+await scenario('S15', 'SSE stream pushes bids', async () => {
+  const k = key()
+  await init(k)
+  await start(k)
+  // Bid only once the snapshot has arrived, so the push is what we measure.
+  let bidSentAt = 0
+  let bidRequest = null
+  const { status, events } = await readStream(k, { timeoutMs: 15000 }, (evts) => {
+    if (!bidRequest && evts.some((e) => e.name === 'state')) {
+      bidSentAt = Date.now()
+      bidRequest = bid(k, 175, 'streamer')
+    }
+    return evts.some((e) => e.name === 'bid')
+  })
+  const r = bidRequest ? await bidRequest : { status: 0 }
+  const names = events.map((e) => e.name)
+  check('S15 stream 200', status === 200, String(status))
+  check('S15 snapshot first', names[0] === 'state' && events[0].data?.session?.uuid === k, names.join(','))
+  check('S15 bid accepted', r.status === 200, String(r.status))
+  const bidEvent = events.find((e) => e.name === 'bid')
+  check('S15 bid pushed', bidEvent?.data?.bid?.amount === 175, JSON.stringify(bidEvent?.data))
+  check('S15 push under 1.5s', bidEvent && bidEvent.at - bidSentAt < 1500, bidEvent ? `${bidEvent.at - bidSentAt}ms` : 'none')
+  const sessionEvent = events.find((e) => e.name === 'session')
+  check('S15 no host_key leak', !JSON.stringify(events).includes('host_key'))
+  check('S15 session delta', !sessionEvent || sessionEvent.data.session.currentBid >= 100)
+  const bad = await fetch(`${BASE_URL}/api/session/${encodeURIComponent('bad key!')}/stream`)
+  check('S15 invalid key 400', bad.status === 400, String(bad.status))
+})
+
+if (WEBHOOK_TOKEN && SESSION_SECRET) {
+  const signed = (bodyObj, { token = WEBHOOK_TOKEN, ts = Math.floor(Date.now() / 1000) } = {}) => {
+    const body = JSON.stringify(bodyObj)
+    const sig = createHmac('sha256', token).update(`v0:${ts}:${body}`).digest('hex')
+    return fetch(`${BASE_URL}/api/zoom/webhook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-zm-signature': `v0=${sig}`, 'x-zm-request-timestamp': String(ts) },
+      body,
+    })
+  }
+
+  await scenario('S14', 'webhook-verified host', async () => {
+    const plainToken = randomBytes(8).toString('hex')
+    const v = await signed({ event: 'endpoint.url_validation', payload: { plainToken } })
+    const vj = await v.json()
+    check('S14a url validation', v.status === 200 && vj.encryptedToken === createHmac('sha256', WEBHOOK_TOKEN).update(plainToken).digest('hex'))
+    const forged = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { token: 'wrong' })
+    check('S14b forged signature -> 401', forged.status === 401, String(forged.status))
+    const stale = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { ts: Math.floor(Date.now() / 1000) - 600 })
+    check('S14c stale timestamp -> 401', stale.status === 401, String(stale.status))
+
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    // A participant claims host first, then Zoom reports the real host.
+    const squatter = mintCookie('userSquat', mid)
+    const host = mintCookie('userHost', mid)
+    const r1 = await start(k, {}, squatter)
+    check('S14d first claim works before webhook', r1.status === 200, String(r1.status))
+    const w = await signed({ event: 'meeting.started', payload: { object: { uuid: mid, host_id: 'userHost', id: 1 } } })
+    check('S14e meeting.started 200', w.status === 200, String(w.status))
+    const r2 = await stop(k, squatter)
+    check('S14f squatter loses control -> 403', r2.status === 403, String(r2.status))
+    const r3 = await stop(k, host)
+    check('S14g real host stops', r3.status === 200 && r3.json.state.viewer.isHost === true && r3.json.state.session.hostVerified === true, JSON.stringify([r3.status, r3.json?.state?.viewer]))
+    const r4 = await start(k, {}, squatter)
+    check('S14h squatter cannot restart -> 403', r4.status === 403, String(r4.status))
+    const r5 = await start(k, {}, host)
+    check('S14i real host restarts', r5.status === 200, String(r5.status))
+  })
+} else {
+  console.log('SKIP  S14 webhook host (set ZOOM_WEBHOOK_SECRET_TOKEN and SESSION_SECRET to run)')
 }
 
 console.log('')

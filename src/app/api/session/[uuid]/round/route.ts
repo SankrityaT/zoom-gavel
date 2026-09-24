@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
+import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { getState, startRound, stopRound, type RoundOutcome } from '@/lib/gavel/server'
 import { isSandboxKey } from '@/lib/gavel/types'
 import { boundedInt, boundedString, rejectCrossSite } from '@/lib/gavel/validate'
@@ -66,6 +67,8 @@ export async function POST(
       if (extendWindowSeconds === null || extendBySeconds === null) {
         return badRequest('extension settings out of bounds')
       }
+      const limited = await enforce([rule(`round:ip:${clientIp(request)}`, LIMITS.roundPerIp)])
+      if (limited) return limited
       outcome = await startRound(uuid, hostKey, {
         itemName,
         openingBid,
@@ -75,6 +78,8 @@ export async function POST(
         extendBySeconds,
       })
     } else if (payload.action === 'stop') {
+      const limited = await enforce([rule(`round:ip:${clientIp(request)}`, LIMITS.roundPerIp)])
+      if (limited) return limited
       outcome = await stopRound(uuid, hostKey)
     } else {
       return badRequest("action must be 'start' or 'stop'")

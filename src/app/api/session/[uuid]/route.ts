@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
 import { MAX_BID } from '@/lib/gavel/demo'
+import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { ensureSession, getState, placeBid } from '@/lib/gavel/server'
 import { anonBidderKey, boundedInt, boundedString, rejectCrossSite } from '@/lib/gavel/validate'
 
@@ -60,6 +61,8 @@ export async function POST(
       }
       const itemName = boundedString(payload.itemName, 120) ?? 'Test lot'
       const openingBid = boundedInt(payload.openingBid, 0) ?? 0
+      const limited = await enforce([rule(`init:ip:${clientIp(request)}`, LIMITS.initPerIp)])
+      if (limited) return limited
       await ensureSession(uuid, itemName, openingBid)
       const state = await getState(uuid, viewer)
       return NextResponse.json(state, { status: 201 })
@@ -77,6 +80,12 @@ export async function POST(
     const bidderKey = viewer.verified
       ? (viewer.bidderKey as string)
       : await anonBidderKey(bidderName)
+
+    const limited = await enforce([
+      rule(`bid:ip:${clientIp(request)}`, LIMITS.bidPerIp),
+      rule(`bid:who:${uuid}:${bidderKey}`, LIMITS.bidPerBidder),
+    ])
+    if (limited) return limited
 
     const outcome = await placeBid(uuid, amount, bidderKey, bidderName, viewer.verified)
     const state = await getState(uuid, viewer)

@@ -18,6 +18,7 @@ import {
   toSessionInfo,
   type Bid,
   type BidRow,
+  type SessionInfo,
   type SessionRow,
   type SessionState,
 } from '@/lib/gavel/types'
@@ -28,8 +29,12 @@ export type SyncPhase =
   | { phase: 'live'; state: SessionState }
   | { phase: 'error'; message: string }
 
+/** How updates reach this client; null until a transport is chosen. */
+export type Transport = 'realtime' | 'stream' | 'polling'
+
 export type AuctionSessionHook = {
   sync: SyncPhase
+  transport: Transport | null
   /** This viewer's public bidder key (verified or anonymous), once known. */
   selfKey: string | null
   /** Server-synced wall clock, in ms. */
@@ -43,6 +48,10 @@ export type AuctionSessionHook = {
 }
 
 const RESYNC_MS = 30_000
+// After a stream failure the client polls, then retries the stream with
+// jittered exponential backoff so a hiccup never pins it to polling.
+const STREAM_RETRY_BASE_MS = 15_000
+const STREAM_RETRY_MAX_MS = 120_000
 const MAX_BIDS = 50
 
 function mergeBids(existing: Bid[], incoming: Bid[]) {
@@ -54,19 +63,22 @@ function mergeBids(existing: Bid[], incoming: Bid[]) {
     .slice(0, MAX_BIDS)
 }
 
-// Transport: 1s polling when websockets are unavailable (forced inside the
-// Zoom client), realtime subscriptions everywhere else. Every accepted
-// update passes a monotonic guard on session.updatedAt, and bids merge by
-// id, so no path can regress the view.
+// Transport ladder: direct Supabase Realtime, then Server-Sent Events from
+// our own origin, then 1s polling. Inside Zoom the ladder starts at SSE:
+// the webview's websocket support and domain allow list are out of our
+// hands, and supabase-js must never even load there. Every
+// accepted update passes a monotonic guard on session.updatedAt, and bids
+// merge by id, so no path can regress the view.
 export function useAuctionSession(
   sessionKey: string,
   bidderName: string,
-  forcePolling: boolean,
+  inZoom: boolean,
 ): AuctionSessionHook {
   const [sync, setSync] = useState<SyncPhase>(
     supabaseConfigured() ? { phase: 'connecting' } : { phase: 'unconfigured' },
   )
   const [extendedAt, setExtendedAt] = useState<number | null>(null)
+  const [transport, setTransport] = useState<Transport | null>(null)
   const [anonKey, setAnonKey] = useState<string | null>(null)
   const latestUpdatedAt = useRef('')
   const latestState = useRef<SessionState | null>(null)
@@ -114,14 +126,15 @@ export function useAuctionSession(
     [noteExtension],
   )
 
-  const applySessionRow = useCallback(
-    (row: SessionRow) => {
+  // Returns true when the change affects what this viewer may do (host
+  // claimed or verified), which only a full state read can recompute.
+  const applySessionInfo = useCallback(
+    (session: SessionInfo) => {
       const current = latestState.current
-      if (!current) return
-      if (row.updated_at <= latestUpdatedAt.current) return
-      latestUpdatedAt.current = row.updated_at
-      noteExtension(row.ends_at, row.status)
-      const session = toSessionInfo(row)
+      if (!current) return false
+      if (session.updatedAt <= latestUpdatedAt.current) return false
+      latestUpdatedAt.current = session.updatedAt
+      noteExtension(session.endsAt, session.status)
       const merged: SessionState = {
         ...current,
         session,
@@ -129,14 +142,18 @@ export function useAuctionSession(
       }
       latestState.current = merged
       setSync({ phase: 'live', state: merged })
+      return (
+        session.hostClaimed !== current.session.hostClaimed ||
+        session.hostVerified !== current.session.hostVerified
+      )
     },
     [noteExtension],
   )
 
-  const applyBidRow = useCallback((row: BidRow, roundNo: number) => {
+  const applyBid = useCallback((bid: Bid, roundNo: number) => {
     const current = latestState.current
     if (!current || roundNo !== current.session.roundNo) return
-    const merged: SessionState = { ...current, bids: mergeBids(current.bids, [toBid(row)]) }
+    const merged: SessionState = { ...current, bids: mergeBids(current.bids, [bid]) }
     latestState.current = merged
     setSync({ phase: 'live', state: merged })
   }, [])
@@ -167,14 +184,106 @@ export function useAuctionSession(
     let active = true
     let pollId: ReturnType<typeof setInterval> | null = null
     let resyncId: ReturnType<typeof setInterval> | null = null
-    let teardownRealtime: (() => void) | null = null
+    let teardownPush: (() => void) | null = null
+
+    const onSession = (session: SessionInfo) => {
+      if (applySessionInfo(session)) void refresh()
+    }
+
+    function startResync() {
+      if (resyncId === null) {
+        resyncId = setInterval(() => {
+          if (active) void refresh()
+        }, RESYNC_MS)
+      }
+    }
+
+    let streamStarted = false
+    let streamRetryId: ReturnType<typeof setTimeout> | null = null
+    let streamFailures = 0
+
+    function scheduleStreamRetry() {
+      if (!active || streamRetryId !== null) return
+      const base = Math.min(STREAM_RETRY_MAX_MS, STREAM_RETRY_BASE_MS * 2 ** streamFailures)
+      streamFailures += 1
+      streamRetryId = setTimeout(() => {
+        streamRetryId = null
+        if (!active) return
+        if (pollId !== null) {
+          clearInterval(pollId)
+          pollId = null
+        }
+        streamStarted = false
+        void startStream()
+      }, base * (1 + Math.random() * 0.25))
+    }
+
+    function fallBackFromStream() {
+      startPolling()
+      scheduleStreamRetry()
+    }
+
+    function startPushOrPoll() {
+      if (typeof EventSource === 'undefined') startPolling()
+      else void startStream()
+    }
 
     function startPolling() {
       if (!active || pollId !== null) return
+      teardownPush?.()
+      teardownPush = null
+      setTransport('polling')
       void loadOrCreate()
       pollId = setInterval(() => {
         if (active) void refresh()
       }, 1000)
+    }
+
+    async function startStream() {
+      if (streamStarted) return
+      streamStarted = true
+      teardownPush?.()
+      teardownPush = null
+      // The stream only reads; make sure the session exists first.
+      await loadOrCreate()
+      if (!active) return
+      const source = new EventSource(
+        `/api/session/${encodeURIComponent(sessionKey)}/stream`,
+      )
+      let failures = 0
+      const parse = (event: Event) => JSON.parse((event as MessageEvent<string>).data) as unknown
+
+      source.addEventListener('state', (event) => {
+        const state = parse(event) as SessionState | null
+        // A delivered snapshot is the proof the stream works end to end.
+        streamFailures = 0
+        if (active && state) applyState(state)
+      })
+      source.addEventListener('session', (event) => {
+        const data = parse(event) as { session?: SessionInfo }
+        if (active && data.session) onSession(data.session)
+      })
+      source.addEventListener('bid', (event) => {
+        const data = parse(event) as { bid?: Bid; roundNo?: number }
+        if (active && data.bid && typeof data.roundNo === 'number') applyBid(data.bid, data.roundNo)
+      })
+      source.addEventListener('fallback', () => {
+        if (active) fallBackFromStream()
+      })
+      source.onopen = () => {
+        failures = 0
+        if (active) setTransport('stream')
+      }
+      // Routine reconnects (the server ends each stream before its time
+      // limit) come back through onopen. A refused connection or repeated
+      // failures mean this client should poll instead.
+      source.onerror = () => {
+        failures += 1
+        if (active && (source.readyState === EventSource.CLOSED || failures >= 3)) fallBackFromStream()
+      }
+      teardownPush = () => source.close()
+      if (!active) teardownPush()
+      startResync()
     }
 
     async function startRealtime() {
@@ -189,43 +298,45 @@ export function useAuctionSession(
             if (!active) return
             const payload = message.payload as { table?: string; record?: SessionRow }
             if (payload?.table === 'auction_sessions' && payload.record?.uuid) {
-              applySessionRow(payload.record)
+              onSession(toSessionInfo(payload.record))
             }
           })
           .on('broadcast', { event: 'INSERT' }, (message) => {
             if (!active) return
             const payload = message.payload as { table?: string; record?: BidRow & { round_no: number } }
             if (payload?.table === 'auction_bids' && payload.record?.id) {
-              applyBidRow(payload.record, payload.record.round_no)
+              applyBid(toBid(payload.record), payload.record.round_no)
             }
           })
           .subscribe((status) => {
             if (!active) return
-            if (status === 'SUBSCRIBED') void loadOrCreate()
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') startPolling()
+            if (status === 'SUBSCRIBED') {
+              setTransport('realtime')
+              void loadOrCreate()
+            }
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') startPushOrPoll()
           })
-        teardownRealtime = () => {
+        teardownPush = () => {
           void supabase.removeChannel(channel)
         }
-        if (!active) teardownRealtime()
-        resyncId = setInterval(() => {
-          if (active) void refresh()
-        }, RESYNC_MS)
+        if (!active) teardownPush()
+        startResync()
       } catch {
-        startPolling()
+        startPushOrPoll()
       }
     }
 
-    if (forcePolling || typeof WebSocket === 'undefined') startPolling()
+    if (inZoom || typeof WebSocket === 'undefined') startPushOrPoll()
     else void startRealtime()
 
     return () => {
       active = false
       if (pollId !== null) clearInterval(pollId)
       if (resyncId !== null) clearInterval(resyncId)
-      teardownRealtime?.()
+      if (streamRetryId !== null) clearTimeout(streamRetryId)
+      teardownPush?.()
     }
-  }, [sessionKey, forcePolling, loadOrCreate, refresh, applySessionRow, applyBidRow])
+  }, [sessionKey, inZoom, loadOrCreate, refresh, applyState, applySessionInfo, applyBid])
 
   useEffect(() => {
     let active = true
@@ -267,5 +378,5 @@ export function useAuctionSession(
     (sync.phase === 'live' && sync.state.viewer.verified ? sync.state.viewer.bidderKey : null) ??
     anonKey
 
-  return { sync, selfKey, now, extendedAt, placeBid, startRound, stopRound, refresh }
+  return { sync, transport, selfKey, now, extendedAt, placeBid, startRound, stopRound, refresh }
 }

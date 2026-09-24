@@ -10,7 +10,8 @@ type Props = {
   sessionKey: string
   sessionLabel: string
   bidderName: string
-  forcePolling: boolean
+  /** Inside the Zoom client: push arrives over our own SSE stream. */
+  inZoom: boolean
   /** Client-side role from the Zoom SDK. A hint for showing controls; the server decides. */
   roleHint: string | null
 }
@@ -25,14 +26,20 @@ function labelFor(name: string, bidderKey: string, selfKey: string | null) {
 }
 const EXTENSION_TOAST_MS = 2500
 
+const TRANSPORT_LABELS = {
+  realtime: 'live',
+  stream: 'live stream',
+  polling: '1s polling',
+} as const
+
 export default function AuctionPanel({
   sessionKey,
   sessionLabel,
   bidderName,
-  forcePolling,
+  inZoom,
   roleHint,
 }: Props) {
-  const auction = useAuctionSession(sessionKey, bidderName, forcePolling)
+  const auction = useAuctionSession(sessionKey, bidderName, inZoom)
   const { sync } = auction
 
   if (sync.phase === 'unconfigured') {
@@ -47,7 +54,9 @@ export default function AuctionPanel({
     )
   }
 
-  const transportLabel = forcePolling ? `${sessionLabel} · 1s polling` : sessionLabel
+  const transportLabel = auction.transport
+    ? `${sessionLabel} · ${TRANSPORT_LABELS[auction.transport]}`
+    : sessionLabel
 
   return (
     <section className="panel" aria-labelledby="panel-title">
@@ -245,7 +254,9 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
             ? `Outbid. Minimum is now ${formatUsd(result.minAmount ?? nextBid)}.`
             : result.reason === 'expired' || result.reason === 'not_open'
               ? 'The round closed before your bid arrived.'
-              : `Bid rejected (${result.reason}).`,
+              : result.reason === 'rate_limited'
+                ? 'Too many bids at once. Try again in a moment.'
+                : `Bid rejected (${result.reason}).`,
         )
       }
     } catch (error) {
@@ -420,10 +431,14 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
           {session.sandbox
             ? 'Sandbox: anyone can run the clock'
             : viewer.isHost
-              ? 'You are the host'
-              : session.hostClaimed
-                ? 'Host claimed by someone else'
-                : 'First to start claims host'}
+              ? session.hostVerified
+                ? 'You are the host, verified by Zoom'
+                : 'You are the host'
+              : session.hostVerified
+                ? 'Only the meeting host can run rounds'
+                : session.hostClaimed
+                  ? 'Host claimed by someone else'
+                  : 'First to start claims host'}
         </span>
       </div>
 

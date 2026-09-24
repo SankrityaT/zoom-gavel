@@ -26,8 +26,25 @@ export function rejectCrossSite(request: Request): string | null {
   }
   const origin = request.headers.get('origin')
   if (origin) {
-    const expected = new URL(request.url).origin
-    if (origin !== expected) return 'cross-site request rejected'
+    // Compare hosts from the headers the browser actually used. request.url
+    // is rewritten to localhost by `next start` and behind the dev tunnel,
+    // which would reject legitimate same-origin posts. A cross-site page
+    // cannot set Host or X-Forwarded-Host, so this stays a CSRF guard.
+    const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
+    let originHost: string | null = null
+    try {
+      originHost = new URL(origin).host
+    } catch {
+      originHost = null
+    }
+    if (!host || originHost !== host) return 'cross-site request rejected'
   }
   return null
+}
+
+// Session keys are base64url meeting ids (mtg-...) or demo/join ids.
+const SESSION_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/
+
+export function isSessionKey(value: string) {
+  return SESSION_KEY_PATTERN.test(value)
 }

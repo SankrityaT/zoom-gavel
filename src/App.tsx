@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import AuctionPanel from './panel/AuctionPanel'
+import TransportProbe from './panel/TransportProbe'
 import { describeError, toSessionKey } from '@/lib/gavel/demo'
 import type { CheckState } from './zoom'
 import {
@@ -231,16 +232,16 @@ function App() {
           <span className="sdk-tag">SDK {zoomSdkVersion}</span>
         </div>
 
-        {/* Mount only after the SDK check settles: forcePolling must be
-            final before any sync transport initializes, because inside the
-            Zoom webview the realtime path must never run at all. */}
+        {/* Mount only after the SDK check settles: inZoom must be final
+            before any sync transport initializes, because inside the Zoom
+            webview the direct realtime path must never run at all. */}
         {check.phase !== 'checking' && sessionKey && (
           <AuctionPanel
             key={sessionKey}
             sessionKey={sessionKey}
             sessionLabel={sessionLabel}
             bidderName={bidderId}
-            forcePolling={Boolean(diagnostics)}
+            inZoom={Boolean(diagnostics)}
             roleHint={diagnostics?.user?.role ?? null}
           />
         )}
@@ -296,6 +297,8 @@ function App() {
               </div>
             </dl>
           )}
+          <p className="context-label">TRANSPORT PROBE</p>
+          <TransportProbe />
         </section>
 
         <section className="capabilities" aria-labelledby="capabilities-title">
@@ -362,7 +365,7 @@ function App() {
 
         <footer>
           <span>{zoomCapabilities.length} capabilities declared</span>
-          <span>Bid state syncs via Supabase Realtime</span>
+          <span>Bid state syncs via Supabase Realtime and SSE</span>
         </footer>
       </section>
     </main>

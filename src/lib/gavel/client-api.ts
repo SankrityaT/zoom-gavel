@@ -43,6 +43,7 @@ export async function postBid(
 ): Promise<BidResult> {
   const res = await postJson(sessionUrl(sessionKey), { amount, bidderId: bidderName })
   if (res.status === 200 || res.status === 409) return (await res.json()) as BidResult
+  if (res.status === 429) return { accepted: false, reason: 'rate_limited' }
   throw new Error(`bid failed (${res.status})`)
 }
 
@@ -63,6 +64,9 @@ async function roundRequest(sessionKey: string, body: unknown): Promise<RoundRes
   const res = await postJson(sessionUrl(sessionKey, '/round'), body)
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (res.ok) return { ok: true, state: json.state as SessionState }
+  if (res.status === 429) {
+    return { ok: false, status: 429, reason: 'rate_limited', error: 'Too many requests. Try again in a moment.' }
+  }
   return {
     ok: false,
     status: res.status,
