@@ -1,82 +1,121 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import Image from 'next/image'
 import { fetchResults, resultsUrl } from '@/lib/gavel/client-api'
 import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
 import { outcomeLabel } from '@/lib/gavel/results'
-import type { RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
+import type { LeaderEntry, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
+import logo from '@/marketing/assets/logo.png'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
 
 type Props = {
   sessionKey: string
-  sessionLabel: string
   bidderName: string
   /** Inside the Zoom client: push arrives over our own SSE stream. */
   inZoom: boolean
-  /** Client-side role from the Zoom SDK. A hint for showing controls; the server decides. */
+  /** Client-side role from the Zoom SDK. A hint for copy only; the server decides. */
   roleHint: string | null
+  /** Opens the app for everyone in the meeting (Zoom Collaborate). In-meeting hosts only. */
+  onInviteMeeting?: () => Promise<void>
 }
 
-const RING_LENGTH = 2 * Math.PI * 16
-
-// Names are client-chosen even for verified bidders, so every name carries
-// a short server-derived key suffix: two "Alice"s are visibly different.
-function labelFor(name: string, bidderKey: string, selfKey: string | null) {
-  if (selfKey !== null && bidderKey === selfKey) return 'You'
-  return `${name} #${bidderKey.slice(-4)}`
-}
 const EXTENSION_TOAST_MS = 2500
 const BUY_NOW_CONFIRM_MS = 4000
 // A double-click or touch bounce must not count as the confirming tap.
 const BUY_NOW_ARM_MS = 500
+const ROUND_LENGTHS = [
+  { seconds: 30, label: '30 sec' },
+  { seconds: 60, label: '1 min' },
+  { seconds: 120, label: '2 min' },
+  { seconds: 300, label: '5 min' },
+]
+const AVATAR_TINTS = ['coral', 'sage', 'sand', 'sky', 'plum']
 
-const TRANSPORT_LABELS = {
-  realtime: 'live',
-  stream: 'live stream',
-  polling: '1s polling',
-} as const
+// Names are client-chosen even for verified bidders, so every name other
+// than the viewer's own carries a short server-derived key suffix: two
+// people called Alice are visibly different.
+// The stored name may carry a " · id" tail that keeps unverified bidders
+// with the same screen name apart; it is not for display.
+function displayName(name: string) {
+  return name.split(' · ')[0] || name
+}
 
-export default function AuctionPanel({
-  sessionKey,
-  sessionLabel,
-  bidderName,
-  inZoom,
-  roleHint,
-}: Props) {
+function nameParts(name: string, bidderKey: string, selfKey: string | null) {
+  if (selfKey !== null && bidderKey === selfKey) return { name: 'You', suffix: null, self: true }
+  return { name: displayName(name), suffix: `#${bidderKey.slice(-4)}`, self: false }
+}
+
+function tintFor(bidderKey: string) {
+  let sum = 0
+  for (const ch of bidderKey) sum += ch.charCodeAt(0)
+  return AVATAR_TINTS[sum % AVATAR_TINTS.length]
+}
+
+function clockText(remainingSec: number) {
+  const minutes = Math.floor(remainingSec / 60)
+  return `${minutes}:${String(remainingSec % 60).padStart(2, '0')}`
+}
+
+export default function AuctionPanel({ sessionKey, bidderName, inZoom, roleHint, onInviteMeeting }: Props) {
   const auction = useAuctionSession(sessionKey, bidderName, inZoom)
   const { sync } = auction
 
-  if (sync.phase === 'unconfigured') {
-    return (
-      <section className="panel" aria-labelledby="panel-title">
-        <p className="context-label" id="panel-title">LIVE AUCTION</p>
-        <p>
-          Backend not configured: set NEXT_PUBLIC_SUPABASE_URL,
-          NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY.
-        </p>
-      </section>
-    )
-  }
-
-  const transportLabel = auction.transport
-    ? `${sessionLabel} · ${TRANSPORT_LABELS[auction.transport]}`
-    : sessionLabel
-
   return (
-    <section className="panel" aria-labelledby="panel-title">
-      <div className="section-heading">
-        <p className="context-label" id="panel-title">LIVE AUCTION</p>
-        <span>{transportLabel}</span>
-      </div>
-
-      {sync.phase === 'connecting' && <p>Connecting to session…</p>}
-      {sync.phase === 'error' && <p role="alert">Sync error: {sync.message}</p>}
-
+    <section className="gv" aria-label="Live auction">
+      <Header auction={auction} />
+      {sync.phase === 'unconfigured' && (
+        <p className="gv-note">The auction service is not set up yet.</p>
+      )}
+      {sync.phase === 'connecting' && <p className="gv-note">Connecting…</p>}
+      {sync.phase === 'error' && (
+        <p className="gv-note" role="alert">
+          Could not reach the auction. {sync.message}
+        </p>
+      )}
       {sync.phase === 'live' && (
-        <LivePanel state={sync.state} auction={auction} roleHint={roleHint} sessionKey={sessionKey} />
+        <LivePanel
+          state={sync.state}
+          auction={auction}
+          roleHint={roleHint}
+          sessionKey={sessionKey}
+          onInviteMeeting={onInviteMeeting}
+        />
       )}
     </section>
+  )
+}
+
+function Header({ auction }: { auction: AuctionSessionHook }) {
+  const state = auction.sync.phase === 'live' ? auction.sync.state : null
+  let status = ''
+  let tone = ''
+  if (state) {
+    const { session, viewer, leaderboard } = state
+    if (session.status === 'open') {
+      status = leaderboard.length === 0 ? 'Bidding is open' : `${leaderboard.length} bidding`
+      tone = 'live'
+    } else if (viewer.isHost || (session.sandbox && viewer.canControl)) {
+      status = "You're hosting"
+      tone = 'host'
+    } else if (session.status === 'closed') {
+      status = 'Round over'
+    }
+  }
+  return (
+    <header className="gv-head">
+      <span className="gv-brand">
+        <Image src={logo} alt="" width={28} height={28} />
+        Gavel
+      </span>
+      {status && (
+        <span className={tone ? `gv-status gv-status--${tone}` : 'gv-status'}>
+          {tone === 'live' && <i aria-hidden="true" />}
+          {status}
+        </span>
+      )}
+    </header>
   )
 }
 
@@ -85,124 +124,66 @@ function LivePanel({
   auction,
   roleHint,
   sessionKey,
+  onInviteMeeting,
 }: {
   state: SessionState
   auction: AuctionSessionHook
   roleHint: string | null
   sessionKey: string
+  onInviteMeeting?: () => Promise<void>
 }) {
   const { session, viewer } = state
   const isOpen = session.status === 'open'
-  const youLead = auction.selfKey !== null && session.leader?.bidderKey === auction.selfKey
-  const showHostControls =
-    viewer.canControl || (!session.sandbox && (roleHint === 'host' || roleHint === 'coHost'))
+  const canHost = viewer.canControl
+  // Zoom says this person is the host, but the server has not confirmed it.
+  const hostUnconfirmed =
+    !canHost && !session.sandbox && (roleHint === 'host' || roleHint === 'coHost') && !session.hostVerified
 
   return (
     <>
-      <LotHeader state={state} />
-
-      <div className="panel-price-block">
-        <span key={session.currentBid} className="panel-price">
-          {formatUsd(session.currentBid)}
-        </span>
-        <span className={`panel-winner${session.status === 'closed' ? ' panel-winner--closed' : ''}`}>
-          {session.status === 'idle'
-            ? 'Waiting for the host to start a round'
-            : session.leader === null
-              ? `Opening bid ${formatUsd(session.openingBid)}, no paddles yet`
-              : session.status === 'closed'
-                ? youLead
-                  ? 'You won the lot'
-                  : `${labelFor(session.leader.name, session.leader.bidderKey, auction.selfKey)} won the lot`
-                : youLead
-                  ? 'You are winning'
-                  : `${labelFor(session.leader.name, session.leader.bidderKey, auction.selfKey)} is winning`}
-        </span>
-      </div>
-
-      <Leaderboard state={state} selfKey={auction.selfKey} />
+      {session.status === 'idle' ? (
+        !canHost && <Waiting hostUnconfirmed={hostUnconfirmed} />
+      ) : (
+        <>
+          <LotTag state={state} auction={auction} />
+          <Bidders state={state} selfKey={auction.selfKey} />
+        </>
+      )}
 
       {/* Keyed by round so an armed Buy Now or a typed amount never carries
           into the next lot. */}
-      {isOpen && <BidRow key={session.roundNo} state={state} auction={auction} />}
-      {session.status === 'closed' && <ClosedState state={state} />}
+      {isOpen && <BidDock key={session.roundNo} state={state} auction={auction} />}
+      {isOpen && canHost && <EndRound auction={auction} />}
 
-      {showHostControls && <HostControls state={state} auction={auction} />}
-      {showHostControls && <Results state={state} sessionKey={sessionKey} />}
+      {session.status === 'closed' && !canHost && (
+        <p className="gv-after">
+          {session.leader !== null && session.reserveMet
+            ? 'The host will be in touch about payment. The next lot starts when they are ready.'
+            : 'The next lot starts when the host is ready.'}
+        </p>
+      )}
 
-      <ShareLink sessionKey={sessionKey} />
+      {!isOpen && canHost && (
+        <>
+          <HostSetup key={session.roundNo} state={state} auction={auction} />
+          <Invite sessionKey={sessionKey} onInviteMeeting={onInviteMeeting} />
+        </>
+      )}
+      {canHost && <Receipt state={state} sessionKey={sessionKey} />}
     </>
   )
 }
 
-function LotHeader({ state }: { state: SessionState }) {
-  const { session, viewer, leaderboard } = state
-  const bidCount = leaderboard.reduce((sum, entry) => sum + entry.bids, 0)
+function Waiting({ hostUnconfirmed }: { hostUnconfirmed: boolean }) {
   return (
-    <div className="panel-lot-row">
-      <div className="panel-lot">
-        <span className="panel-lot-name">{session.itemName}</span>
-        <span className="panel-lot-meta">
-          Round {session.roundNo || '–'} · {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
-        </span>
-      </div>
-      <div className="panel-badges">
-        {session.reservePrice !== null &&
-          (session.reserveMet ? (
-            <span className="panel-badge panel-badge--met">Reserve met</span>
-          ) : (
-            <span className="panel-badge">Reserve {formatUsd(session.reservePrice)}</span>
-          ))}
-        {session.buyNowPrice !== null && (
-          <span className="panel-badge">Buy Now {formatUsd(session.buyNowPrice)}</span>
-        )}
-        {session.sandbox ? (
-          <span className="panel-badge">Sandbox</span>
-        ) : viewer.verified ? (
-          <span className="panel-badge panel-badge--verified">Verified via Zoom</span>
-        ) : (
-          <span className="panel-badge">Unverified</span>
-        )}
-      </div>
+    <div className="gv-waiting">
+      <p className="gv-waiting-title">Nothing on the block yet.</p>
+      <p className="gv-waiting-body">
+        {hostUnconfirmed
+          ? 'Zoom has not confirmed you as the host. Close Gavel and open it again from Apps.'
+          : 'The host starts each lot. Bidding opens here the moment they do.'}
+      </p>
     </div>
-  )
-}
-
-// One row per bidder, best bid first. Everyone sees the ranking; an amount
-// shows only where the server (or this browser's own bid) supplied one.
-function Leaderboard({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
-  const { session, leaderboard } = state
-  return (
-    <ol className="panel-ladder" aria-label="Leaderboard">
-      {leaderboard.map((entry) => {
-        const isSelf = selfKey !== null && entry.bidderKey === selfKey
-        const classes = ['panel-rung']
-        if (entry.rank === 1) classes.push('panel-rung--leader')
-        if (isSelf) classes.push('panel-rung--self')
-        return (
-          <li key={entry.bidderKey} className={classes.join(' ')}>
-            <span className="panel-rung-dot" aria-hidden="true" />
-            <span className="panel-rung-rank">{entry.rank}</span>
-            <span className="panel-rung-name">
-              {labelFor(entry.name, entry.bidderKey, selfKey)}
-              {!entry.verified && <span className="panel-rung-tag"> · unverified</span>}
-            </span>
-            {entry.amount !== null ? (
-              <span className="panel-rung-amount">{formatUsd(entry.amount)}</span>
-            ) : (
-              <span className="panel-rung-private">Private</span>
-            )}
-          </li>
-        )
-      })}
-      {session.status !== 'idle' && (
-        <li className="panel-rung panel-rung--opening">
-          <span className="panel-rung-dot" aria-hidden="true" />
-          <span className="panel-rung-name">Opening bid</span>
-          <span className="panel-rung-amount">{formatUsd(session.openingBid)}</span>
-        </li>
-      )}
-    </ol>
   )
 }
 
@@ -234,19 +215,86 @@ function useRoundClock(auction: AuctionSessionHook, endsAt: string | null, round
   return clock
 }
 
-function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+// The lot, drawn as a price tag: item, the price, who holds it, and the
+// clock along the tear line.
+function LotTag({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+  const { session } = state
+  const isOpen = session.status === 'open'
+  const sold = session.status === 'closed' && session.leader !== null && session.reserveMet
+  const youLead = auction.selfKey !== null && session.leader?.bidderKey === auction.selfKey
+
+  let line: ReactNode
+  let tone = ''
+  if (session.leader === null) {
+    line = isOpen ? 'No bids yet. The opening bid is yours to take.' : 'Not sold. Nobody bid.'
+  } else if (isOpen) {
+    tone = youLead ? 'good' : ''
+    line = youLead ? (
+      <b>You&apos;re winning</b>
+    ) : (
+      <>
+        <b>{displayName(session.leader.name)}</b> is winning
+      </>
+    )
+  } else if (sold) {
+    tone = youLead ? 'good' : 'done'
+    line = (
+      <>
+        <b>{youLead ? 'You won it' : `${displayName(session.leader.name)} won it`}</b>
+        {session.boughtNow ? ' with Buy Now' : ''}
+      </>
+    )
+  } else {
+    line = 'Not sold. The reserve was not met.'
+  }
+
+  return (
+    <div className="gv-tagwrap">
+      <svg className="gv-string" viewBox="0 0 74 50" fill="none" aria-hidden="true">
+        <path
+          d="M17 46C10 26 26 6 46 10c15 3 15 22 2 24-9 1-13-10-4-14"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+      <div className="gv-tagshadow">
+      <div className={isOpen ? 'gv-tag' : 'gv-tag gv-tag--closed'}>
+        <span className="gv-hole" aria-hidden="true" />
+        <div className="gv-lotline">
+          <span>Lot {session.roundNo}</span>
+          {session.reservePrice !== null &&
+            !sold &&
+            (session.reserveMet ? (
+              <span className="gv-chip gv-chip--met">Reserve met</span>
+            ) : (
+              <span className="gv-chip">Reserve {formatUsd(session.reservePrice)}</span>
+            ))}
+        </div>
+        <h2 className="gv-item">{session.itemName}</h2>
+        <p key={session.currentBid} className="gv-price">
+          <sup>$</sup>
+          {session.currentBid.toLocaleString('en-US')}
+        </p>
+        <p className={tone ? `gv-who gv-who--${tone}` : 'gv-who'}>{line}</p>
+        {isOpen && <TagClock state={state} auction={auction} />}
+      </div>
+      </div>
+      {sold && <span className="gv-stamp">Sold</span>}
+    </div>
+  )
+}
+
+function TagClock({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
   const { session } = state
   const { nowMs, wallMs, ratio } = useRoundClock(auction, session.endsAt, session.roundNo)
   const endsAtMs = session.endsAt ? new Date(session.endsAt).getTime() : nowMs
   const remainingMs = nowMs === 0 ? 0 : Math.max(0, endsAtMs - nowMs)
   const remainingSec = Math.ceil(remainingMs / 1000)
-  const low = remainingSec <= session.extendWindowSeconds
+  const low = nowMs !== 0 && remainingSec <= session.extendWindowSeconds
+  const extended = auction.extendedAt !== null && wallMs - auction.extendedAt < EXTENSION_TOAST_MS
 
-  const [placing, setPlacing] = useState(false)
-  const [message, setMessage] = useState('')
-  const [custom, setCustom] = useState('')
-  const [showCustom, setShowCustom] = useState(false)
-
+  // The server closes the round; ask it as soon as the clock runs out.
   const zeroFired = useRef(false)
   useEffect(() => {
     if (nowMs === 0) return
@@ -260,160 +308,268 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
     }
   }, [remainingMs, nowMs, auction])
 
+  return (
+    <div className={low ? 'gv-clock gv-clock--low' : 'gv-clock'} aria-label={`${remainingSec} seconds left`}>
+      <span className="gv-clock-time">{nowMs === 0 ? '' : clockText(remainingSec)}</span>
+      <span className="gv-clock-bar" aria-hidden="true">
+        <i style={{ transform: `scaleX(${ratio})` }} />
+      </span>
+      <span className="gv-clock-note">{extended ? `Extended ${session.extendBySeconds} sec` : 'left'}</span>
+    </div>
+  )
+}
+
+// One entry per bidder, best bid first. Everyone sees the ranking; an amount
+// shows only where the server (or this browser's own bid) supplied one. The
+// leader gets a card of their own; everyone else is a row with a rank badge.
+function Bidders({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
+  const { leaderboard, session } = state
+  const closed = session.status === 'closed'
+  const bidCount = leaderboard.reduce((sum, entry) => sum + entry.bids, 0)
+  const [leader, ...rest] = leaderboard
+  const anyHidden = leaderboard.some((entry) => entry.amount === null)
+  return (
+    <div className="gv-bidders">
+      <div className="gv-sect">
+        <h3>Bidders</h3>
+        <span>
+          {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
+        </span>
+      </div>
+      {!leader ? (
+        <p className="gv-empty">Nobody has bid yet.</p>
+      ) : (
+        <>
+          <LeaderCard entry={leader} selfKey={selfKey} closed={closed} sold={closed && session.reserveMet} />
+          {rest.length > 0 && (
+            <ol className="gv-rows">
+              {rest.map((entry) => (
+                <BidderRow key={entry.bidderKey} entry={entry} selfKey={selfKey} closed={closed} leading={session.currentBid} />
+              ))}
+            </ol>
+          )}
+          {anyHidden && <p className="gv-legend">Only you and the host can see your amount.</p>}
+        </>
+      )}
+    </div>
+  )
+}
+
+function bidsText(count: number) {
+  return `${count} ${count === 1 ? 'bid' : 'bids'}`
+}
+
+function Avatar({ entry, self, rank }: { entry: LeaderEntry; self: boolean; rank?: number }) {
+  const initial = self ? 'Y' : displayName(entry.name).charAt(0).toUpperCase()
+  return (
+    <span className={self ? 'gv-avatar gv-avatar--self' : `gv-avatar gv-avatar--${tintFor(entry.bidderKey)}`} aria-hidden="true">
+      {initial}
+      {rank !== undefined && <i>{rank}</i>}
+    </span>
+  )
+}
+
+function LeaderCard({ entry, selfKey, closed, sold }: { entry: LeaderEntry; selfKey: string | null; closed: boolean; sold: boolean }) {
+  const { name, suffix, self } = nameParts(entry.name, entry.bidderKey, selfKey)
+  const label = closed ? (sold ? 'Winner' : 'Highest bid') : 'Leading'
+  return (
+    <div className={self ? 'gv-lead gv-lead--self' : 'gv-lead'}>
+      <Avatar entry={entry} self={self} />
+      <span className="gv-lead-who">
+        <strong>
+          {name}
+          {suffix && <small>{suffix}</small>}
+        </strong>
+        <span>
+          {label} · {bidsText(entry.bids)}
+          {!entry.verified && !self && name !== 'Guest' ? ' · Guest' : ''}
+        </span>
+      </span>
+      {entry.amount !== null && <span className="gv-lead-amount">{formatUsd(entry.amount)}</span>}
+    </div>
+  )
+}
+
+function BidderRow({ entry, selfKey, closed, leading }: { entry: LeaderEntry; selfKey: string | null; closed: boolean; leading: number }) {
+  const { name, suffix, self } = nameParts(entry.name, entry.bidderKey, selfKey)
+  const behind = self && entry.amount !== null && !closed ? leading - entry.amount : null
+  return (
+    <li className={self ? 'gv-row gv-row--self' : 'gv-row'}>
+      <Avatar entry={entry} self={self} rank={entry.rank} />
+      <span className="gv-name">
+        <strong>
+          {name}
+          {suffix && <small>{suffix}</small>}
+        </strong>
+        <span>
+          {behind !== null && behind > 0 ? `${formatUsd(behind)} behind · ` : ''}
+          {bidsText(entry.bids)}
+          {!entry.verified && !self && name !== 'Guest' ? ' · Guest' : ''}
+        </span>
+      </span>
+      {entry.amount !== null ? (
+        <span className="gv-amount">{formatUsd(entry.amount)}</span>
+      ) : (
+        <span className="gv-lock" role="img" aria-label="Amount hidden">
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+            <rect x="3" y="7" width="10" height="7" rx="2" fill="currentColor" />
+            <path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        </span>
+      )}
+    </li>
+  )
+}
+
+function BidDock({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+  const { session } = state
   // A bid at or above the Buy Now price buys the lot, so ordinary bids stop
-  // one short of it and the Buy Now button is the only way to that price.
-  // Near the ceiling the quick bid shrinks to whatever room is left rather
-  // than leaving a gap where nothing can be bid.
+  // one short of it and the Buy Now control is the only way to that price.
   const buyNow = session.buyNowPrice
   const bidCeiling = buyNow === null ? MAX_BID : buyNow - 1
   const minBid = session.leader === null ? session.currentBid : session.currentBid + 1
   const stepBid = session.leader === null ? session.currentBid : session.currentBid + BID_STEP
-  const nextBid = Math.max(minBid, Math.min(stepBid, bidCeiling))
+  const suggested = Math.max(minBid, Math.min(stepBid, bidCeiling))
+  const canBid = minBid <= bidCeiling
+
+  // What the person has dialled in above the suggestion; cleared whenever
+  // the price moves past it.
+  const [dialled, setDialled] = useState<number | null>(null)
+  const amount = dialled !== null && dialled >= minBid && dialled <= bidCeiling ? dialled : suggested
+  const [typing, setTyping] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [placing, setPlacing] = useState(false)
+  const [message, setMessage] = useState('')
   const [confirmingBuy, setConfirmingBuy] = useState(false)
   const armedAt = useRef(0)
+
   useEffect(() => {
     if (!confirmingBuy) return
     const id = setTimeout(() => setConfirmingBuy(false), BUY_NOW_CONFIRM_MS)
     return () => clearTimeout(id)
   }, [confirmingBuy])
-  const showToast = auction.extendedAt !== null && wallMs - auction.extendedAt < EXTENSION_TOAST_MS
 
-  async function bid(amount: number) {
+  async function bid(value: number) {
     if (placing) return
     setPlacing(true)
     setMessage('')
     try {
-      const result = await auction.placeBid(amount)
+      const result = await auction.placeBid(value)
       if (result.accepted) {
-        setMessage(result.extended ? `Bid ${formatUsd(amount)} accepted, clock extended.` : `Bid ${formatUsd(amount)} accepted.`)
-        setShowCustom(false)
-        setCustom('')
+        setDialled(null)
+        setTyping(false)
+        setTyped('')
       } else {
         setMessage(
           result.reason === 'too_low'
-            ? `Outbid. Minimum is now ${formatUsd(result.minAmount ?? nextBid)}.`
+            ? `Someone got there first. The lowest bid is now ${formatUsd(result.minAmount ?? suggested)}.`
             : result.reason === 'expired' || result.reason === 'not_open'
               ? 'The round closed before your bid arrived.'
               : result.reason === 'rate_limited'
                 ? 'Too many bids at once. Try again in a moment.'
-                : `Bid rejected (${result.reason}).`,
+                : 'That bid was not accepted. Try again.',
         )
       }
-    } catch (error) {
-      setMessage(`Bid did not reach the server: ${error instanceof Error ? error.message : 'network error'}`)
+    } catch {
+      setMessage('Your bid did not reach the auction. Check your connection and try again.')
     } finally {
       setPlacing(false)
     }
   }
 
-  const customValue = Number.parseInt(custom, 10)
-  const customValid = Number.isInteger(customValue) && customValue >= minBid && customValue <= bidCeiling
+  const typedValue = Number.parseInt(typed.replace(/[^0-9]/g, ''), 10)
+  const typedValid = Number.isInteger(typedValue) && typedValue >= minBid && typedValue <= bidCeiling
 
   return (
-    <div className="panel-action-block">
-      <div className="panel-action">
-        <span className={low ? 'panel-ring panel-ring--low' : 'panel-ring'} aria-label={`${remainingSec} seconds left`}>
-          <svg viewBox="0 0 40 40" width="46" height="46" aria-hidden="true">
-            <circle className="panel-ring-track" cx="20" cy="20" r="16" />
-            <circle
-              className="panel-ring-fill"
-              cx="20"
-              cy="20"
-              r="16"
-              strokeDasharray={RING_LENGTH}
-              strokeDashoffset={RING_LENGTH * (1 - ratio)}
-              transform="rotate(-90 20 20)"
-            />
-          </svg>
-          <em>{remainingSec}</em>
-        </span>
-        {nextBid <= bidCeiling ? (
-          <button
-            className="panel-bid-button"
-            type="button"
-            disabled={placing}
-            onClick={() => void bid(nextBid)}
+    <div className="gv-dock">
+      {canBid ? (
+        typing ? (
+          <form
+            className="gv-type"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (typedValid) void bid(typedValue)
+            }}
           >
-            {placing ? 'Placing…' : `Bid ${formatUsd(nextBid)}`}
-          </button>
+            <label className="gv-type-field">
+              <span>$</span>
+              <input
+                inputMode="numeric"
+                autoFocus
+                value={typed}
+                onChange={(event) => setTyped(event.target.value)}
+                placeholder={minBid.toLocaleString('en-US')}
+                aria-label="Your bid in dollars"
+              />
+            </label>
+            <button className="gv-bid" type="submit" disabled={!typedValid || placing}>
+              {placing ? 'Placing…' : 'Bid'}
+            </button>
+          </form>
         ) : (
-          <span className="panel-bid-capped">Next bid reaches Buy Now</span>
-        )}
-        {nextBid + BID_STEP <= bidCeiling && (
-          <button
-            className="panel-secondary-button"
-            type="button"
-            disabled={placing}
-            onClick={() => void bid(nextBid + BID_STEP)}
-          >
-            +{formatUsd(BID_STEP)}
+          <div className="gv-bidrow">
+            <button
+              className="gv-step"
+              type="button"
+              aria-label={`Lower my bid by ${formatUsd(BID_STEP)}`}
+              disabled={placing || amount - BID_STEP < minBid}
+              onClick={() => setDialled(amount - BID_STEP)}
+            >
+              −
+            </button>
+            <button className="gv-bid" type="button" disabled={placing} onClick={() => void bid(amount)}>
+              {placing ? (
+                'Placing…'
+              ) : (
+                <>
+                  Bid <b>{formatUsd(amount)}</b>
+                </>
+              )}
+            </button>
+            <button
+              className="gv-step"
+              type="button"
+              aria-label={`Raise my bid by ${formatUsd(BID_STEP)}`}
+              disabled={placing || amount + BID_STEP > bidCeiling}
+              onClick={() => setDialled(amount + BID_STEP)}
+            >
+              +
+            </button>
+          </div>
+        )
+      ) : (
+        <p className="gv-dock-note">The next bid reaches the Buy Now price.</p>
+      )}
+
+      <div className="gv-dock-links">
+        {canBid && (
+          <button className="gv-link" type="button" onClick={() => setTyping((on) => !on)}>
+            {typing ? 'Use the quick bid' : 'Enter an amount'}
           </button>
         )}
-        {nextBid <= bidCeiling && (
+        {buyNow !== null && (
           <button
-            className="panel-secondary-button"
+            className={confirmingBuy ? 'gv-buy gv-buy--confirm' : 'gv-buy'}
             type="button"
-            onClick={() => setShowCustom((v) => !v)}
+            disabled={placing}
+            onClick={() => {
+              if (!confirmingBuy) {
+                armedAt.current = Date.now()
+                setConfirmingBuy(true)
+                return
+              }
+              if (Date.now() - armedAt.current < BUY_NOW_ARM_MS) return
+              setConfirmingBuy(false)
+              void bid(buyNow)
+            }}
           >
-            Custom
+            {confirmingBuy ? `Tap again to buy for ${formatUsd(buyNow)}` : `Buy it now for ${formatUsd(buyNow)}`}
           </button>
         )}
       </div>
 
-      {buyNow !== null && (
-        <button
-          className={confirmingBuy ? 'panel-buy-now panel-buy-now--confirm' : 'panel-buy-now'}
-          type="button"
-          disabled={placing}
-          onClick={() => {
-            if (!confirmingBuy) {
-              armedAt.current = Date.now()
-              setConfirmingBuy(true)
-              return
-            }
-            if (Date.now() - armedAt.current < BUY_NOW_ARM_MS) return
-            setConfirmingBuy(false)
-            void bid(buyNow)
-          }}
-        >
-          {confirmingBuy
-            ? `Tap again to buy for ${formatUsd(buyNow)}`
-            : `Buy now for ${formatUsd(buyNow)}`}
-        </button>
-      )}
-
-      {showCustom && minBid <= bidCeiling && (
-        <form
-          className="panel-custom"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (customValid) void bid(customValue)
-          }}
-        >
-          <input
-            type="number"
-            inputMode="numeric"
-            min={minBid}
-            max={bidCeiling}
-            step={1}
-            value={custom}
-            onChange={(event) => setCustom(event.target.value)}
-            placeholder={`${minBid} or more`}
-            aria-label="Custom bid amount"
-          />
-          <button className="panel-secondary-button" type="submit" disabled={!customValid || placing}>
-            Bid
-          </button>
-        </form>
-      )}
-
-      {showToast && (
-        <p className="panel-extend" role="status">
-          Late bid, clock extended +{session.extendBySeconds}s
-        </p>
-      )}
       {message && (
-        <p className="action-message" role="status">
+        <p className="gv-message" role="status">
           {message}
         </p>
       )}
@@ -421,153 +577,27 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
   )
 }
 
-function ClosedState({ state }: { state: SessionState }) {
-  const { session } = state
-  const sold = session.leader !== null && session.reserveMet
-  return (
-    <div className="panel-closed">
-      {sold ? (
-        <>
-          <span className="panel-sold-word">Sold</span>
-          <span className="panel-sold-price">{formatUsd(session.currentBid)}</span>
-          {session.boughtNow && <span className="panel-badge">Buy Now</span>}
-        </>
-      ) : (
-        <span className="panel-not-sold">
-          {session.leader === null ? 'Not sold: no bids' : 'Not sold: reserve not met'}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function HostControls({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
-  const { session, viewer } = state
-  const [itemName, setItemName] = useState(session.itemName)
-  const [openingBid, setOpeningBid] = useState(String(session.openingBid || 100))
-  const [reserve, setReserve] = useState(session.reservePrice === null ? '' : String(session.reservePrice))
-  const [buyNow, setBuyNow] = useState(session.buyNowPrice === null ? '' : String(session.buyNowPrice))
-  const [seconds, setSeconds] = useState('60')
+function EndRound({ auction }: { auction: AuctionSessionHook }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-
-  const isOpen = session.status === 'open'
-  const opening = Number.parseInt(openingBid, 10)
-  const reserveValue = reserve.trim() === '' ? null : Number.parseInt(reserve, 10)
-  const secs = Number.parseInt(seconds, 10)
-  const buyNowValue = buyNow.trim() === '' ? null : Number.parseInt(buyNow, 10)
-  const buyNowValid =
-    buyNowValue === null ||
-    (Number.isInteger(buyNowValue) &&
-      buyNowValue > opening &&
-      buyNowValue <= MAX_BID &&
-      (reserveValue === null || buyNowValue >= reserveValue))
-  const valid =
-    buyNowValid &&
-    itemName.trim().length > 0 &&
-    Number.isInteger(opening) && opening >= 0 && opening <= MAX_BID &&
-    (reserveValue === null || (Number.isInteger(reserveValue) && reserveValue >= 0 && reserveValue <= MAX_BID)) &&
-    Number.isInteger(secs) && secs >= 5 && secs <= 3600
-
-  async function start() {
-    if (!valid || busy) return
-    setBusy(true)
-    setMessage('')
-    try {
-      const result = await auction.startRound({
-        itemName: itemName.trim(),
-        openingBid: opening,
-        reservePrice: reserveValue,
-        buyNowPrice: buyNowValue,
-        seconds: secs,
-      })
-      if (!result.ok) {
-        setMessage(
-          result.error ??
-            (result.reason === 'round_open' ? 'A round is already open.' : `Could not start (${result.reason}).`),
-        )
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
   async function stop() {
     if (busy) return
     setBusy(true)
     setMessage('')
     try {
       const result = await auction.stopRound()
-      if (!result.ok) setMessage(result.error ?? `Could not stop (${result.reason}).`)
+      if (!result.ok) setMessage(result.error ?? 'Could not end the round. Try again.')
     } finally {
       setBusy(false)
     }
   }
-
   return (
-    <div className="panel-host">
-      <div className="section-heading">
-        <p className="context-label">HOST CONTROLS</p>
-        <span>
-          {session.sandbox
-            ? 'Sandbox: anyone can run the clock'
-            : viewer.isHost
-              ? session.hostVerified
-                ? 'You are the host, verified by Zoom'
-                : 'You are the host'
-              : session.hostVerified
-                ? 'Only the meeting host can run rounds'
-                : session.hostClaimed
-                  ? 'Host claimed by someone else'
-                  : 'First to start claims host'}
-        </span>
-      </div>
-
-      {isOpen ? (
-        <button className="button button--secondary" type="button" disabled={busy} onClick={() => void stop()}>
-          {busy ? 'Stopping…' : 'Stop round now'}
-        </button>
-      ) : (
-        <form
-          className="panel-host-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void start()
-          }}
-        >
-          <label>
-            Item
-            <input value={itemName} onChange={(e) => setItemName(e.target.value)} maxLength={120} />
-          </label>
-          <div className="panel-host-grid">
-            <label>
-              Opening bid
-              <input type="number" inputMode="numeric" min={0} max={MAX_BID} value={openingBid} onChange={(e) => setOpeningBid(e.target.value)} />
-            </label>
-            <label>
-              Reserve (optional)
-              <input type="number" inputMode="numeric" min={0} max={MAX_BID} value={reserve} onChange={(e) => setReserve(e.target.value)} placeholder="none" />
-            </label>
-            <label>
-              Buy Now (optional)
-              <input type="number" inputMode="numeric" min={1} max={MAX_BID} value={buyNow} onChange={(e) => setBuyNow(e.target.value)} placeholder="none" />
-            </label>
-            <label>
-              Round length (s)
-              <input type="number" inputMode="numeric" min={5} max={3600} value={seconds} onChange={(e) => setSeconds(e.target.value)} />
-            </label>
-          </div>
-          {!buyNowValid && (
-            <p className="panel-host-hint">Buy Now must be above the opening bid and not below the reserve.</p>
-          )}
-          <button className="button button--primary" type="submit" disabled={!valid || busy}>
-            {busy ? 'Starting…' : session.status === 'closed' ? 'Start next round' : 'Start round'}
-          </button>
-        </form>
-      )}
-
+    <div className="gv-end">
+      <button className="gv-link" type="button" disabled={busy} onClick={() => void stop()}>
+        {busy ? 'Ending…' : 'End this round now'}
+      </button>
       {message && (
-        <p className="action-message" role="alert">
+        <p className="gv-message" role="alert">
           {message}
         </p>
       )}
@@ -575,10 +605,222 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
   )
 }
 
-// Finished rounds for whoever runs the auction, with a CSV for collecting
-// payment outside the app. The server refuses this to non-hosts on meeting
-// sessions, in which case nothing renders.
-function Results({ state, sessionKey }: { state: SessionState; sessionKey: string }) {
+// A money field inside the setup sentence: digits only, sized to its text.
+function Slot({
+  value,
+  onChange,
+  placeholder,
+  label,
+  money,
+  optional,
+}: {
+  value: string
+  onChange: (next: string) => void
+  placeholder: string
+  label: string
+  money?: boolean
+  optional?: boolean
+}) {
+  const empty = value.trim() === ''
+  // Money is kept as bare digits and shown with thousands separators.
+  const display = money && !empty ? Number(value).toLocaleString('en-US') : value
+  const shown = display || placeholder
+  const classes = ['gv-slot']
+  if (money) classes.push('gv-slot--money')
+  if (optional && empty) classes.push('gv-slot--empty')
+  return (
+    <label className={classes.join(' ')}>
+      {money && !empty && <span aria-hidden="true">$</span>}
+      <input
+        value={display}
+        onChange={(event) => onChange(money ? event.target.value.replace(/[^0-9]/g, '') : event.target.value)}
+        placeholder={placeholder}
+        inputMode={money ? 'numeric' : 'text'}
+        maxLength={money ? 9 : 120}
+        size={Math.max(shown.length, money ? 2 : 6)}
+        aria-label={label}
+      />
+    </label>
+  )
+}
+
+// The host sets a lot up the way they would say it out loud.
+function HostSetup({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+  const { session } = state
+  const first = session.roundNo === 0
+  const [itemName, setItemName] = useState('')
+  const [opening, setOpening] = useState('')
+  const [reserve, setReserve] = useState('')
+  const [buyNow, setBuyNow] = useState('')
+  const [seconds, setSeconds] = useState(60)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const openingValue = Number.parseInt(opening, 10)
+  const reserveValue = reserve === '' ? null : Number.parseInt(reserve, 10)
+  const buyNowValue = buyNow === '' ? null : Number.parseInt(buyNow, 10)
+  const openingOk = Number.isInteger(openingValue) && openingValue >= 0 && openingValue <= MAX_BID
+  const reserveOk = reserveValue === null || (Number.isInteger(reserveValue) && reserveValue <= MAX_BID)
+  const buyNowOk =
+    buyNowValue === null ||
+    (Number.isInteger(buyNowValue) &&
+      openingOk &&
+      buyNowValue > openingValue &&
+      buyNowValue <= MAX_BID &&
+      (reserveValue === null || buyNowValue >= reserveValue))
+  const ready = itemName.trim().length > 0 && openingOk && reserveOk && buyNowOk
+
+  let hint = ''
+  if (!buyNowOk) hint = 'Buy Now has to be above the starting bid, and not below the reserve.'
+
+  async function start() {
+    if (!ready || busy) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const result = await auction.startRound({
+        itemName: itemName.trim(),
+        openingBid: openingValue,
+        reservePrice: reserveValue,
+        buyNowPrice: buyNowValue,
+        seconds,
+      })
+      if (!result.ok) {
+        setMessage(
+          result.reason === 'round_open'
+            ? 'A round is already running.'
+            : result.status === 401
+              ? 'Zoom has not confirmed who you are. Close Gavel and open it again from Apps.'
+              : result.status === 403
+                ? 'Only the meeting host can start a lot.'
+                : (result.error ?? 'Could not start the lot. Try again.'),
+        )
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form
+      className="gv-setup"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void start()
+      }}
+    >
+      <p className="gv-setup-kicker">{first ? 'Your first lot' : `Lot ${session.roundNo + 1}`}</p>
+      <p className="gv-sentence">
+        Sell <Slot value={itemName} onChange={setItemName} placeholder="an item" label="Item name" /> starting at{' '}
+        <Slot value={opening} onChange={setOpening} placeholder="$0" label="Starting bid in dollars" money />, reserve{' '}
+        <Slot value={reserve} onChange={setReserve} placeholder="None" label="Reserve price in dollars, optional" money optional />
+        , Buy Now{' '}
+        <Slot value={buyNow} onChange={setBuyNow} placeholder="None" label="Buy Now price in dollars, optional" money optional />.
+      </p>
+      <div className="gv-lengths" role="radiogroup" aria-label="Round length">
+        {ROUND_LENGTHS.map((option) => (
+          <button
+            key={option.seconds}
+            type="button"
+            role="radio"
+            aria-checked={seconds === option.seconds}
+            className={seconds === option.seconds ? 'gv-length gv-length--on' : 'gv-length'}
+            onClick={() => setSeconds(option.seconds)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {hint && <p className="gv-message">{hint}</p>}
+      <button className="gv-start" type="submit" disabled={!ready || busy}>
+        {busy ? 'Starting…' : 'Start bidding'}
+      </button>
+      {message && (
+        <p className="gv-message" role="alert">
+          {message}
+        </p>
+      )}
+    </form>
+  )
+}
+
+function Invite({ sessionKey, onInviteMeeting }: { sessionKey: string; onInviteMeeting?: () => Promise<void> }) {
+  const [copied, setCopied] = useState(false)
+  const [showLink, setShowLink] = useState(false)
+  const [inviting, setInviting] = useState('')
+  const shareUrl =
+    typeof window === 'undefined'
+      ? ''
+      : `${window.location.origin}/zoom-test?session=${encodeURIComponent(sessionKey)}`
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // The Zoom client blocks the clipboard: show the link to select by hand.
+      setShowLink(true)
+    }
+  }
+
+  async function inviteMeeting() {
+    if (!onInviteMeeting) return
+    setInviting('Opening Gavel for everyone…')
+    try {
+      await onInviteMeeting()
+      setInviting('Everyone in the meeting has been invited.')
+    } catch {
+      setInviting('Could not invite the meeting. Share the link instead.')
+    }
+  }
+
+  return (
+    <div className="gv-invite">
+      <div className="gv-invite-row">
+        <p>
+          Bring people in
+          <span>Anyone with the link can bid from a browser.</span>
+        </p>
+        <button className="gv-pill" type="button" onClick={() => void copy()}>
+          {copied ? 'Copied' : 'Copy link'}
+        </button>
+      </div>
+      {showLink && (
+        <input
+          className="gv-invite-link"
+          type="text"
+          readOnly
+          value={shareUrl}
+          aria-label="Join link. Select it and copy."
+          onFocus={(event) => event.currentTarget.select()}
+          onClick={(event) => event.currentTarget.select()}
+        />
+      )}
+      {onInviteMeeting && (
+        <div className="gv-invite-row">
+          <p>
+            Open it for the meeting
+            <span>Everyone here gets a prompt to join.</span>
+          </p>
+          <button className="gv-pill" type="button" onClick={() => void inviteMeeting()}>
+            Invite all
+          </button>
+        </div>
+      )}
+      {inviting && (
+        <p className="gv-message" role="status">
+          {inviting}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Finished lots as a receipt, with a CSV for collecting payment outside the
+// app. The server refuses this to non-hosts on meeting sessions, in which
+// case nothing renders.
+function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: string }) {
   const { session } = state
   const [rounds, setRounds] = useState<RoundRecord[] | null>(null)
 
@@ -601,74 +843,37 @@ function Results({ state, sessionKey }: { state: SessionState; sessionKey: strin
   const total = sold.reduce((sum, round) => sum + round.finalBid, 0)
 
   return (
-    <div className="panel-results">
-      <div className="section-heading">
-        <p className="context-label">RESULTS</p>
+    <div className="gv-receipt-wrap">
+      <div className="gv-receipt">
+        <h3>So far</h3>
+        <ol>
+          {rounds.map((round) => (
+            <li key={round.roundNo}>
+              <span>
+                {round.itemName}
+                <em>
+                  {round.outcome === 'sold' && round.winner
+                    ? `${displayName(round.winner.name)}${round.boughtNow ? ', Buy Now' : ''}`
+                    : outcomeLabel(round)}
+                </em>
+              </span>
+              <span>{round.outcome === 'sold' ? formatUsd(round.finalBid) : ''}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="gv-receipt-total">
+          <span>Raised</span>
+          <span>{formatUsd(total)}</span>
+        </p>
+      </div>
+      <div className="gv-receipt-foot">
+        <a href={resultsUrl(sessionKey, 'csv')} download="gavel-results.csv">
+          Download CSV
+        </a>
         <span>
-          {sold.length} of {rounds.length} sold · {formatUsd(total)}
+          {sold.length} of {rounds.length} sold
         </span>
       </div>
-      <ol className="panel-results-list">
-        {rounds.map((round) => (
-          <li key={round.roundNo}>
-            <span className="panel-results-round">{round.roundNo}</span>
-            <span className="panel-results-item">
-              <strong>{round.itemName}</strong>
-              <span>
-                {round.outcome === 'sold' && round.winner
-                  ? `${outcomeLabel(round)} to ${round.winner.name} #${round.winner.bidderKey.slice(-4)}`
-                  : outcomeLabel(round)}
-              </span>
-            </span>
-            <span className="panel-results-price">
-              {round.outcome === 'sold' ? formatUsd(round.finalBid) : '–'}
-            </span>
-          </li>
-        ))}
-      </ol>
-      <a className="button button--secondary panel-results-download" href={resultsUrl(sessionKey, 'csv')} download="gavel-results.csv">
-        Download results (CSV)
-      </a>
-    </div>
-  )
-}
-
-function ShareLink({ sessionKey }: { sessionKey: string }) {
-  const [copied, setCopied] = useState(false)
-  const [note, setNote] = useState('')
-  const shareUrl =
-    typeof window === 'undefined'
-      ? ''
-      : `${window.location.origin}/zoom-test?session=${encodeURIComponent(sessionKey)}`
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setNote('Clipboard blocked here. Tap the link field to select it.')
-    }
-  }
-
-  return (
-    <div className="live-sync-share">
-      <div className="live-sync-share-row">
-        <span className="live-sync-share-label">Bid from any browser</span>
-        <button className="button button--secondary" type="button" onClick={() => void copy()}>
-          {copied ? 'Link copied' : 'Copy join link'}
-        </button>
-      </div>
-      <input
-        className="live-sync-share-input"
-        type="text"
-        readOnly
-        value={shareUrl}
-        aria-label="Join link for this session"
-        onFocus={(event) => event.currentTarget.select()}
-        onClick={(event) => event.currentTarget.select()}
-      />
-      {note && <p className="action-message">{note}</p>}
     </div>
   )
 }

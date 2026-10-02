@@ -56,6 +56,13 @@ Use the Marketplace **Local Test** flow to add the app to your Zoom account. Ope
 
 The Collaborate ID identifies the shared session. It does not synchronize app state. Bid state will live in a backend keyed to that ID in the next phase.
 
+## The panel
+
+`/zoom-test` is the in-meeting panel: the lot as a price tag, a leaderboard,
+one bid button, and for the host a setup sentence and a receipt of finished
+lots. The SDK diagnostics that used to fill the page are behind
+`/zoom-test?debug=1`.
+
 ## Live auction architecture
 
 State lives in Supabase Postgres: one `auction_sessions` row per session

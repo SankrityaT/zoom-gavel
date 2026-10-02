@@ -53,6 +53,15 @@ function getJoinKey() {
   return cachedJoinKey
 }
 
+// The diagnostics that used to be the whole page now sit behind ?debug=1.
+let cachedDebug: boolean | undefined
+function getDebug() {
+  if (cachedDebug === undefined) {
+    cachedDebug = new URLSearchParams(window.location.search).has('debug')
+  }
+  return cachedDebug
+}
+
 function App() {
   const [check, setCheck] = useState<CheckState>({ phase: 'checking' })
   const [collaborateEvent, setCollaborateEvent] =
@@ -68,6 +77,11 @@ function App() {
     () => () => {},
     getJoinKey,
     () => null,
+  )
+  const debug = useSyncExternalStore(
+    () => () => {},
+    getDebug,
+    () => false,
   )
 
   // Async half of the check: every setState here happens after an await,
@@ -195,6 +209,11 @@ function App() {
       : null,
   }))
 
+  // Opens Gavel for everyone in the meeting through Zoom's Collaborate mode.
+  async function inviteMeeting() {
+    await startCollaborateMode()
+  }
+
   async function handleStartCollaborate() {
     setActionMessage('Starting Collaborate Mode...')
     try {
@@ -208,180 +227,190 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="app-panel" aria-labelledby="page-title">
-        <header className="topbar">
-          <Link className="wordmark" href="/" aria-label="Zoom Gavel home">
-            <span>zoom</span> Gavel
-          </Link>
-          <span className="build-tag">WEEK 1</span>
-        </header>
-
-        <div className="hero-copy">
-          <p className="eyebrow">SDK BOILERPLATE</p>
-          <h1 id="page-title">
-            Ready for
-            <br />
-            <span>the room.</span>
-          </h1>
-          <p className="intro">
-            Live bid state syncs across every participant below; SDK
-            diagnostics follow.
-          </p>
-        </div>
-
-        <div className="context-strip" aria-live="polite">
-          <span
-            className={`signal signal--${check.phase}`}
-            aria-hidden="true"
-          />
-          <div>
-            <span className="context-label">CURRENT CONTEXT</span>
-            <strong>{context}</strong>
-          </div>
-          <span className="sdk-tag">SDK {zoomSdkVersion}</span>
-        </div>
-
+    <main className="gavel-shell">
+      <div className="gavel-frame">
         {/* Mount only after the SDK check settles: inZoom must be final
             before any sync transport initializes, because inside the Zoom
             webview the direct realtime path must never run at all. */}
-        {check.phase !== 'checking' && sessionKey && (
-          <AuctionPanel
-            key={sessionKey}
-            sessionKey={sessionKey}
-            sessionLabel={sessionLabel}
-            bidderName={bidderId}
-            inZoom={Boolean(diagnostics)}
-            roleHint={diagnostics?.user?.role ?? null}
-          />
+        {check.phase === 'checking' ? (
+          <p className="gavel-loading">Opening Gavel…</p>
+        ) : (
+          sessionKey && (
+            <AuctionPanel
+              key={sessionKey}
+              sessionKey={sessionKey}
+              bidderName={bidderId}
+              inZoom={Boolean(diagnostics)}
+              roleHint={diagnostics?.user?.role ?? null}
+              onInviteMeeting={isMeeting ? inviteMeeting : undefined}
+            />
+          )
         )}
+      </div>
+
+      {debug && (
+        <section className="app-panel gavel-debug" aria-labelledby="page-title">
+        <header className="topbar">
+            <Link className="wordmark" href="/" aria-label="Zoom Gavel home">
+              <span>zoom</span> Gavel
+            </Link>
+            <span className="build-tag">WEEK 1</span>
+          </header>
+
+          <div className="hero-copy">
+            <p className="eyebrow">SDK BOILERPLATE</p>
+            <h1 id="page-title">
+              Ready for
+              <br />
+              <span>the room.</span>
+            </h1>
+            <p className="intro">
+              Live bid state syncs across every participant below; SDK
+              diagnostics follow.
+            </p>
+          </div>
+
+          <div className="context-strip" aria-live="polite">
+            <span
+              className={`signal signal--${check.phase}`}
+              aria-hidden="true"
+            />
+            <div>
+              <span className="context-label">CURRENT CONTEXT</span>
+              <strong>{context}</strong>
+            </div>
+            <span className="sdk-tag">
+            SDK {zoomSdkVersion} · {sessionLabel}
+          </span>
+          </div>
 
         <section className="checklist" aria-labelledby="checklist-title">
-          <div className="section-heading">
-            <h2 id="checklist-title">Connection check</h2>
-            <span>{readiness.filter((item) => item.ready).length}/3</span>
-          </div>
+            <div className="section-heading">
+              <h2 id="checklist-title">Connection check</h2>
+              <span>{readiness.filter((item) => item.ready).length}/3</span>
+            </div>
 
-          <ol>
-            {readiness.map((item) => (
-              <li key={item.label}>
-                <span
-                  className={`checkmark ${item.ready ? 'checkmark--ready' : ''}`}
-                  aria-hidden="true"
-                >
-                  {item.ready ? '✓' : '·'}
-                </span>
+            <ol>
+              {readiness.map((item) => (
+                <li key={item.label}>
+                  <span
+                    className={`checkmark ${item.ready ? 'checkmark--ready' : ''}`}
+                    aria-hidden="true"
+                  >
+                    {item.ready ? '✓' : '·'}
+                  </span>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>{item.detail}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section className="diagnostic" aria-labelledby="diagnostic-title">
+            <div>
+              <p className="context-label" id="diagnostic-title">
+                DIAGNOSTIC
+              </p>
+              <p>{checkMessage}</p>
+            </div>
+            {diagnostics && (
+              <dl>
                 <div>
-                  <strong>{item.label}</strong>
-                  <span>{item.detail}</span>
+                  <dt>Client</dt>
+                  <dd>{diagnostics.config.clientVersion}</dd>
                 </div>
-              </li>
-            ))}
-          </ol>
-        </section>
+                <div>
+                  <dt>Role</dt>
+                  <dd>{diagnostics.user?.role ?? 'Not available'}</dd>
+                </div>
+                <div>
+                  <dt>Identity</dt>
+                  <dd>{diagnostics.identity}</dd>
+                </div>
+                <div>
+                  <dt>Unsupported</dt>
+                  <dd>{unsupportedCount}</dd>
+                </div>
+                <div>
+                  <dt>Collaborate ID</dt>
+                  <dd>{collaborateEvent?.collaborateUUID ?? 'Not started'}</dd>
+                </div>
+              </dl>
+            )}
+            <p className="context-label">TRANSPORT PROBE</p>
+            <TransportProbe />
+          </section>
 
-        <section className="diagnostic" aria-labelledby="diagnostic-title">
-          <div>
-            <p className="context-label" id="diagnostic-title">
-              DIAGNOSTIC
-            </p>
-            <p>{checkMessage}</p>
-          </div>
-          {diagnostics && (
-            <dl>
-              <div>
-                <dt>Client</dt>
-                <dd>{diagnostics.config.clientVersion}</dd>
-              </div>
-              <div>
-                <dt>Role</dt>
-                <dd>{diagnostics.user?.role ?? 'Not available'}</dd>
-              </div>
-              <div>
-                <dt>Identity</dt>
-                <dd>{diagnostics.identity}</dd>
-              </div>
-              <div>
-                <dt>Unsupported</dt>
-                <dd>{unsupportedCount}</dd>
-              </div>
-              <div>
-                <dt>Collaborate ID</dt>
-                <dd>{collaborateEvent?.collaborateUUID ?? 'Not started'}</dd>
-              </div>
-            </dl>
-          )}
-          <p className="context-label">TRANSPORT PROBE</p>
-          <TransportProbe />
-        </section>
-
-        <section className="capabilities" aria-labelledby="capabilities-title">
-          <div className="section-heading">
-            <p className="context-label" id="capabilities-title">
-              CAPABILITIES
-            </p>
-            <span>
-              {diagnostics
-                ? `${capabilityChecks.filter((c) => c.supported).length}/${capabilityChecks.length} supported`
-                : 'Pending Zoom connection'}
-            </span>
-          </div>
-          <ul className="capability-list">
-            {capabilityChecks.map((cap) => (
-              <li key={cap.name}>
-                <span
-                  className={
-                    cap.supported === null
-                      ? 'capability-dot'
+          <section className="capabilities" aria-labelledby="capabilities-title">
+            <div className="section-heading">
+              <p className="context-label" id="capabilities-title">
+                CAPABILITIES
+              </p>
+              <span>
+                {diagnostics
+                  ? `${capabilityChecks.filter((c) => c.supported).length}/${capabilityChecks.length} supported`
+                  : 'Pending Zoom connection'}
+              </span>
+            </div>
+            <ul className="capability-list">
+              {capabilityChecks.map((cap) => (
+                <li key={cap.name}>
+                  <span
+                    className={
+                      cap.supported === null
+                        ? 'capability-dot'
+                        : cap.supported
+                          ? 'capability-dot capability-dot--pass'
+                          : 'capability-dot capability-dot--fail'
+                    }
+                    aria-hidden="true"
+                  />
+                  <code>{cap.name}</code>
+                  <span className="capability-status">
+                    {cap.supported === null
+                      ? 'pending'
                       : cap.supported
-                        ? 'capability-dot capability-dot--pass'
-                        : 'capability-dot capability-dot--fail'
-                  }
-                  aria-hidden="true"
-                />
-                <code>{cap.name}</code>
-                <span className="capability-status">
-                  {cap.supported === null
-                    ? 'pending'
-                    : cap.supported
-                      ? 'pass'
-                      : 'fail'}
-                </span>
-              </li>
-            ))}
-          </ul>
+                        ? 'pass'
+                        : 'fail'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <div className="actions">
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={() => void handleStartCollaborate()}
+              disabled={!isMeeting || check.phase === 'checking'}
+            >
+              Start Collaborate test
+            </button>
+            <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => void runSdkCheck()}
+              disabled={check.phase === 'checking'}
+            >
+              Run check again
+            </button>
+          </div>
+
+          {actionMessage && (
+            <p className="action-message" role="status">
+              {actionMessage}
+            </p>
+          )}
+
+          <footer>
+            <span>{zoomCapabilities.length} capabilities declared</span>
+            <span>Bid state syncs via Supabase Realtime and SSE</span>
+          </footer>
         </section>
-
-        <div className="actions">
-          <button
-            className="button button--primary"
-            type="button"
-            onClick={() => void handleStartCollaborate()}
-            disabled={!isMeeting || check.phase === 'checking'}
-          >
-            Start Collaborate test
-          </button>
-          <button
-            className="button button--secondary"
-            type="button"
-            onClick={() => void runSdkCheck()}
-            disabled={check.phase === 'checking'}
-          >
-            Run check again
-          </button>
-        </div>
-
-        {actionMessage && (
-          <p className="action-message" role="status">
-            {actionMessage}
-          </p>
-        )}
-
-        <footer>
-          <span>{zoomCapabilities.length} capabilities declared</span>
-          <span>Bid state syncs via Supabase Realtime and SSE</span>
-        </footer>
-      </section>
+      )}
     </main>
   )
 }
