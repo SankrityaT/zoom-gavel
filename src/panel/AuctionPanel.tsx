@@ -7,6 +7,7 @@ import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
 import { outcomeLabel } from '@/lib/gavel/results'
 import type { LeaderEntry, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
 import logo from '@/marketing/assets/logo.png'
+import { RollingNumber, useFlip } from './motion'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
 
@@ -272,9 +273,9 @@ function LotTag({ state, auction }: { state: SessionState; auction: AuctionSessi
             ))}
         </div>
         <h2 className="gv-item">{session.itemName}</h2>
-        <p key={session.currentBid} className="gv-price">
+        <p className="gv-price">
           <sup>$</sup>
-          {session.currentBid.toLocaleString('en-US')}
+          <RollingNumber text={session.currentBid.toLocaleString('en-US')} />
         </p>
         <p className={tone ? `gv-who gv-who--${tone}` : 'gv-who'}>{line}</p>
         {isOpen && <TagClock state={state} auction={auction} />}
@@ -321,13 +322,16 @@ function TagClock({ state, auction }: { state: SessionState; auction: AuctionSes
 
 // One entry per bidder, best bid first. Everyone sees the ranking; an amount
 // shows only where the server (or this browser's own bid) supplied one. The
-// leader gets a card of their own; everyone else is a row with a rank badge.
+// leader's row is a card; everyone else carries a rank badge. It is one list
+// so a row can glide from one place to another when the order changes.
 function Bidders({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
   const { leaderboard, session } = state
   const closed = session.status === 'closed'
   const bidCount = leaderboard.reduce((sum, entry) => sum + entry.bids, 0)
-  const [leader, ...rest] = leaderboard
   const anyHidden = leaderboard.some((entry) => entry.amount === null)
+  const listRef = useRef<HTMLOListElement>(null)
+  useFlip(listRef, leaderboard.map((entry) => entry.bidderKey).join(','))
+
   return (
     <div className="gv-bidders">
       <div className="gv-sect">
@@ -336,18 +340,22 @@ function Bidders({ state, selfKey }: { state: SessionState; selfKey: string | nu
           {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
         </span>
       </div>
-      {!leader ? (
+      {leaderboard.length === 0 ? (
         <p className="gv-empty">Nobody has bid yet.</p>
       ) : (
         <>
-          <LeaderCard entry={leader} selfKey={selfKey} closed={closed} sold={closed && session.reserveMet} />
-          {rest.length > 0 && (
-            <ol className="gv-rows">
-              {rest.map((entry) => (
-                <BidderRow key={entry.bidderKey} entry={entry} selfKey={selfKey} closed={closed} leading={session.currentBid} />
-              ))}
-            </ol>
-          )}
+          <ol className="gv-rows" ref={listRef}>
+            {leaderboard.map((entry) => (
+              <BidderRow
+                key={entry.bidderKey}
+                entry={entry}
+                selfKey={selfKey}
+                closed={closed}
+                sold={closed && session.reserveMet}
+                leading={session.currentBid}
+              />
+            ))}
+          </ol>
           {anyHidden && <p className="gv-legend">Only you and the host can see your amount.</p>}
         </>
       )}
@@ -359,56 +367,54 @@ function bidsText(count: number) {
   return `${count} ${count === 1 ? 'bid' : 'bids'}`
 }
 
-function Avatar({ entry, self, rank }: { entry: LeaderEntry; self: boolean; rank?: number }) {
-  const initial = self ? 'Y' : displayName(entry.name).charAt(0).toUpperCase()
-  return (
-    <span className={self ? 'gv-avatar gv-avatar--self' : `gv-avatar gv-avatar--${tintFor(entry.bidderKey)}`} aria-hidden="true">
-      {initial}
-      {rank !== undefined && <i>{rank}</i>}
-    </span>
-  )
-}
-
-function LeaderCard({ entry, selfKey, closed, sold }: { entry: LeaderEntry; selfKey: string | null; closed: boolean; sold: boolean }) {
+function BidderRow({
+  entry,
+  selfKey,
+  closed,
+  sold,
+  leading,
+}: {
+  entry: LeaderEntry
+  selfKey: string | null
+  closed: boolean
+  sold: boolean
+  leading: number
+}) {
   const { name, suffix, self } = nameParts(entry.name, entry.bidderKey, selfKey)
-  const label = closed ? (sold ? 'Winner' : 'Highest bid') : 'Leading'
+  const lead = entry.rank === 1
+  const behind = !lead && self && entry.amount !== null && !closed ? leading - entry.amount : null
+  const guest = !entry.verified && !self && name !== 'Guest'
+
+  const detail = [
+    lead ? (closed ? (sold ? 'Winner' : 'Highest bid') : 'Leading') : null,
+    behind !== null && behind > 0 ? `${formatUsd(behind)} behind` : null,
+    bidsText(entry.bids),
+    guest ? 'Guest' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const classes = ['gv-row']
+  if (lead) classes.push('gv-row--lead')
+  if (self) classes.push('gv-row--self')
+
   return (
-    <div className={self ? 'gv-lead gv-lead--self' : 'gv-lead'}>
-      <Avatar entry={entry} self={self} />
-      <span className="gv-lead-who">
-        <strong>
-          {name}
-          {suffix && <small>{suffix}</small>}
-        </strong>
-        <span>
-          {label} · {bidsText(entry.bids)}
-          {!entry.verified && !self && name !== 'Guest' ? ' · Guest' : ''}
-        </span>
+    <li className={classes.join(' ')} data-key={entry.bidderKey}>
+      <span className={self ? 'gv-avatar gv-avatar--self' : `gv-avatar gv-avatar--${tintFor(entry.bidderKey)}`} aria-hidden="true">
+        {name.charAt(0).toUpperCase()}
+        {!lead && <i>{entry.rank}</i>}
       </span>
-      {entry.amount !== null && <span className="gv-lead-amount">{formatUsd(entry.amount)}</span>}
-    </div>
-  )
-}
-
-function BidderRow({ entry, selfKey, closed, leading }: { entry: LeaderEntry; selfKey: string | null; closed: boolean; leading: number }) {
-  const { name, suffix, self } = nameParts(entry.name, entry.bidderKey, selfKey)
-  const behind = self && entry.amount !== null && !closed ? leading - entry.amount : null
-  return (
-    <li className={self ? 'gv-row gv-row--self' : 'gv-row'}>
-      <Avatar entry={entry} self={self} rank={entry.rank} />
       <span className="gv-name">
         <strong>
           {name}
           {suffix && <small>{suffix}</small>}
         </strong>
-        <span>
-          {behind !== null && behind > 0 ? `${formatUsd(behind)} behind · ` : ''}
-          {bidsText(entry.bids)}
-          {!entry.verified && !self && name !== 'Guest' ? ' · Guest' : ''}
-        </span>
+        <span>{detail}</span>
       </span>
       {entry.amount !== null ? (
-        <span className="gv-amount">{formatUsd(entry.amount)}</span>
+        <span className="gv-amount">
+          <RollingNumber text={formatUsd(entry.amount)} />
+        </span>
       ) : (
         <span className="gv-lock" role="img" aria-label="Amount hidden">
           <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
@@ -522,7 +528,10 @@ function BidDock({ state, auction }: { state: SessionState; auction: AuctionSess
                 'Placing…'
               ) : (
                 <>
-                  Bid <b>{formatUsd(amount)}</b>
+                  Bid{' '}
+                  <b>
+                    <RollingNumber text={formatUsd(amount)} />
+                  </b>
                 </>
               )}
             </button>

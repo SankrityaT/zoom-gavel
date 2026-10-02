@@ -237,7 +237,6 @@
   line-height: 0.95;
   letter-spacing: -0.045em;
   font-variant-numeric: lining-nums tabular-nums;
-  animation: gv-pop 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .gv-price sup {
@@ -250,11 +249,37 @@
   color: var(--ink-2);
 }
 
-@keyframes gv-pop {
-  from {
-    transform: scale(1.05);
-    color: var(--blue);
-  }
+/* The odometer: one clipped column per digit, a strip of 0-9 inside it. */
+.gv-roll {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.gv-roll-col {
+  display: inline-block;
+  margin: 0 -0.012em;
+  font-variant-numeric: lining-nums tabular-nums;
+  height: 1.12em;
+  overflow: hidden;
+  line-height: 1.12;
+  vertical-align: bottom;
+}
+
+.gv-roll-strip {
+  display: block;
+  transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.gv-roll-strip > span {
+  display: block;
+  height: 1.12em;
+  text-align: center;
+}
+
+.gv-roll-sep {
+  display: inline-block;
+  line-height: 1.12;
 }
 
 .gv-who {
@@ -381,33 +406,65 @@
   color: var(--ink-2);
 }
 
-/* The leader's card. Turns blue when it is you. */
-.gv-lead {
+.gv-rows {
+  position: relative;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.gv-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 13px;
-  margin-top: 6px;
+  padding: 9px 16px;
+  border-radius: 18px;
+  transition:
+    background-color 0.3s ease,
+    box-shadow 0.3s ease,
+    padding 0.3s ease;
+}
+
+.gv-row--self {
+  background: var(--blue-wash);
+}
+
+/* The leader's row is a card. It turns blue when it is you. */
+.gv-row--lead {
+  margin-bottom: 6px;
   padding: 14px 16px;
   border-radius: 20px;
   background: var(--card);
   box-shadow: 0 10px 24px rgba(72, 52, 30, 0.1);
-  animation: gv-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.gv-lead .gv-avatar {
+.gv-row--lead .gv-avatar {
   width: 44px;
   height: 44px;
   font-size: 17px;
 }
 
-.gv-lead-who {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 1px;
+.gv-row--lead .gv-amount {
+  font-size: 24px;
+  letter-spacing: -0.03em;
 }
 
-.gv-lead-who strong,
+.gv-row--lead.gv-row--self {
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(45, 102, 246, 0.3);
+}
+
+.gv-row--lead.gv-row--self .gv-name > span {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.gv-row--lead.gv-row--self .gv-avatar--self {
+  background: #fff;
+  color: var(--blue);
+}
+
 .gv-name strong {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -416,7 +473,6 @@
   font-weight: 700;
 }
 
-.gv-lead-who small,
 .gv-name small {
   margin-left: 6px;
   font-size: 13px;
@@ -424,58 +480,9 @@
   color: var(--ink-3);
 }
 
-.gv-lead-who > span,
 .gv-name > span {
   font-size: 13px;
   color: var(--ink-2);
-}
-
-.gv-lead-amount {
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 24px;
-  letter-spacing: -0.03em;
-  font-variant-numeric: lining-nums tabular-nums;
-}
-
-.gv-lead--self {
-  background: var(--blue);
-  color: #fff;
-  box-shadow: 0 12px 26px rgba(45, 102, 246, 0.3);
-}
-
-.gv-lead--self .gv-lead-who > span {
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.gv-lead--self .gv-avatar--self {
-  background: #fff;
-  color: var(--blue);
-}
-
-@keyframes gv-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-.gv-rows {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-}
-
-.gv-row {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 9px 16px;
-  border-radius: 16px;
-}
-
-.gv-row--self {
-  background: var(--blue-wash);
 }
 
 .gv-avatar {
@@ -488,17 +495,20 @@
   border-radius: 50%;
   font-size: 14px;
   font-weight: 700;
+  transition:
+    width 0.3s ease,
+    height 0.3s ease;
 }
 
 /* The rank rides on the avatar. */
 .gv-avatar i {
   position: absolute;
-  right: -5px;
-  bottom: -4px;
+  right: -7px;
+  bottom: -6px;
   display: grid;
   place-items: center;
-  min-width: 19px;
-  height: 19px;
+  min-width: 18px;
+  height: 18px;
   padding: 0 4px;
   border-radius: 999px;
   background: var(--ink);
@@ -974,9 +984,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gv-price,
   .gv-stamp {
     animation: none;
+  }
+  .gv-roll-strip,
+  .gv-row,
+  .gv-avatar {
+    transition: none;
   }
   .gv-clock-bar i,
   .gv-bid,
