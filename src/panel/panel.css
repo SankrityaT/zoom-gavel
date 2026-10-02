@@ -742,6 +742,10 @@
   letter-spacing: -0.025em;
 }
 
+.gv-keep {
+  white-space: nowrap;
+}
+
 .gv-slot {
   display: inline-flex;
   align-items: baseline;

@@ -710,12 +710,20 @@ function HostSetup({ state, auction }: { state: SessionState; auction: AuctionSe
       }}
     >
       <p className="gv-setup-kicker">{first ? 'Your first lot' : `Lot ${session.roundNo + 1}`}</p>
+      {/* Each field travels with its punctuation, so a comma never starts a line. */}
       <p className="gv-sentence">
         Sell <Slot value={itemName} onChange={setItemName} placeholder="an item" label="Item name" /> starting at{' '}
-        <Slot value={opening} onChange={setOpening} placeholder="$0" label="Starting bid in dollars" money />, reserve{' '}
-        <Slot value={reserve} onChange={setReserve} placeholder="None" label="Reserve price in dollars, optional" money optional />
-        , Buy Now{' '}
-        <Slot value={buyNow} onChange={setBuyNow} placeholder="None" label="Buy Now price in dollars, optional" money optional />.
+        <span className="gv-keep">
+          <Slot value={opening} onChange={setOpening} placeholder="$0" label="Starting bid in dollars" money />,
+        </span>{' '}
+        reserve{' '}
+        <span className="gv-keep">
+          <Slot value={reserve} onChange={setReserve} placeholder="None" label="Reserve price in dollars, optional" money optional />,
+        </span>{' '}
+        Buy Now{' '}
+        <span className="gv-keep">
+          <Slot value={buyNow} onChange={setBuyNow} placeholder="None" label="Buy Now price in dollars, optional" money optional />.
+        </span>
       </p>
       <div className="gv-lengths" role="radiogroup" aria-label="Round length">
         {ROUND_LENGTHS.map((option) => (
