@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { fetchResults, resultsUrl } from '@/lib/gavel/client-api'
 import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
-import type { SessionState } from '@/lib/gavel/types'
+import { outcomeLabel } from '@/lib/gavel/results'
+import type { RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
 
@@ -25,6 +27,9 @@ function labelFor(name: string, bidderKey: string, selfKey: string | null) {
   return `${name} #${bidderKey.slice(-4)}`
 }
 const EXTENSION_TOAST_MS = 2500
+const BUY_NOW_CONFIRM_MS = 4000
+// A double-click or touch bounce must not count as the confirming tap.
+const BUY_NOW_ARM_MS = 500
 
 const TRANSPORT_LABELS = {
   realtime: 'live',
@@ -115,12 +120,15 @@ function LivePanel({
         </span>
       </div>
 
-      <BidLadder state={state} selfKey={auction.selfKey} />
+      <Leaderboard state={state} selfKey={auction.selfKey} />
 
-      {isOpen && <BidRow state={state} auction={auction} />}
+      {/* Keyed by round so an armed Buy Now or a typed amount never carries
+          into the next lot. */}
+      {isOpen && <BidRow key={session.roundNo} state={state} auction={auction} />}
       {session.status === 'closed' && <ClosedState state={state} />}
 
       {showHostControls && <HostControls state={state} auction={auction} />}
+      {showHostControls && <Results state={state} sessionKey={sessionKey} />}
 
       <ShareLink sessionKey={sessionKey} />
     </>
@@ -128,13 +136,14 @@ function LivePanel({
 }
 
 function LotHeader({ state }: { state: SessionState }) {
-  const { session, viewer, bids } = state
+  const { session, viewer, leaderboard } = state
+  const bidCount = leaderboard.reduce((sum, entry) => sum + entry.bids, 0)
   return (
     <div className="panel-lot-row">
       <div className="panel-lot">
         <span className="panel-lot-name">{session.itemName}</span>
         <span className="panel-lot-meta">
-          Round {session.roundNo || '–'} · {bids.length} {bids.length === 1 ? 'bid' : 'bids'}
+          Round {session.roundNo || '–'} · {bidCount} {bidCount === 1 ? 'bid' : 'bids'}
         </span>
       </div>
       <div className="panel-badges">
@@ -144,6 +153,9 @@ function LotHeader({ state }: { state: SessionState }) {
           ) : (
             <span className="panel-badge">Reserve {formatUsd(session.reservePrice)}</span>
           ))}
+        {session.buyNowPrice !== null && (
+          <span className="panel-badge">Buy Now {formatUsd(session.buyNowPrice)}</span>
+        )}
         {session.sandbox ? (
           <span className="panel-badge">Sandbox</span>
         ) : viewer.verified ? (
@@ -156,20 +168,33 @@ function LotHeader({ state }: { state: SessionState }) {
   )
 }
 
-function BidLadder({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
-  const { session, bids } = state
+// One row per bidder, best bid first. Everyone sees the ranking; an amount
+// shows only where the server (or this browser's own bid) supplied one.
+function Leaderboard({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
+  const { session, leaderboard } = state
   return (
-    <ol className="panel-ladder">
-      {bids.map((bid, index) => (
-        <li key={bid.id} className={index === 0 ? 'panel-rung panel-rung--leader' : 'panel-rung'}>
-          <span className="panel-rung-dot" aria-hidden="true" />
-          <span className="panel-rung-name">
-            {labelFor(bid.bidderName, bid.bidderKey, selfKey)}
-            {!bid.verified && <span className="panel-rung-tag"> · unverified</span>}
-          </span>
-          <span className="panel-rung-amount">{formatUsd(bid.amount)}</span>
-        </li>
-      ))}
+    <ol className="panel-ladder" aria-label="Leaderboard">
+      {leaderboard.map((entry) => {
+        const isSelf = selfKey !== null && entry.bidderKey === selfKey
+        const classes = ['panel-rung']
+        if (entry.rank === 1) classes.push('panel-rung--leader')
+        if (isSelf) classes.push('panel-rung--self')
+        return (
+          <li key={entry.bidderKey} className={classes.join(' ')}>
+            <span className="panel-rung-dot" aria-hidden="true" />
+            <span className="panel-rung-rank">{entry.rank}</span>
+            <span className="panel-rung-name">
+              {labelFor(entry.name, entry.bidderKey, selfKey)}
+              {!entry.verified && <span className="panel-rung-tag"> · unverified</span>}
+            </span>
+            {entry.amount !== null ? (
+              <span className="panel-rung-amount">{formatUsd(entry.amount)}</span>
+            ) : (
+              <span className="panel-rung-private">Private</span>
+            )}
+          </li>
+        )
+      })}
       {session.status !== 'idle' && (
         <li className="panel-rung panel-rung--opening">
           <span className="panel-rung-dot" aria-hidden="true" />
@@ -235,7 +260,22 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
     }
   }, [remainingMs, nowMs, auction])
 
-  const nextBid = session.leader === null ? session.currentBid : session.currentBid + BID_STEP
+  // A bid at or above the Buy Now price buys the lot, so ordinary bids stop
+  // one short of it and the Buy Now button is the only way to that price.
+  // Near the ceiling the quick bid shrinks to whatever room is left rather
+  // than leaving a gap where nothing can be bid.
+  const buyNow = session.buyNowPrice
+  const bidCeiling = buyNow === null ? MAX_BID : buyNow - 1
+  const minBid = session.leader === null ? session.currentBid : session.currentBid + 1
+  const stepBid = session.leader === null ? session.currentBid : session.currentBid + BID_STEP
+  const nextBid = Math.max(minBid, Math.min(stepBid, bidCeiling))
+  const [confirmingBuy, setConfirmingBuy] = useState(false)
+  const armedAt = useRef(0)
+  useEffect(() => {
+    if (!confirmingBuy) return
+    const id = setTimeout(() => setConfirmingBuy(false), BUY_NOW_CONFIRM_MS)
+    return () => clearTimeout(id)
+  }, [confirmingBuy])
   const showToast = auction.extendedAt !== null && wallMs - auction.extendedAt < EXTENSION_TOAST_MS
 
   async function bid(amount: number) {
@@ -267,7 +307,7 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
   }
 
   const customValue = Number.parseInt(custom, 10)
-  const customValid = Number.isInteger(customValue) && customValue >= nextBid && customValue <= MAX_BID
+  const customValid = Number.isInteger(customValue) && customValue >= minBid && customValue <= bidCeiling
 
   return (
     <div className="panel-action-block">
@@ -287,32 +327,62 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
           </svg>
           <em>{remainingSec}</em>
         </span>
-        <button
-          className="panel-bid-button"
-          type="button"
-          disabled={placing}
-          onClick={() => void bid(nextBid)}
-        >
-          {placing ? 'Placing…' : `Bid ${formatUsd(nextBid)}`}
-        </button>
-        <button
-          className="panel-secondary-button"
-          type="button"
-          disabled={placing}
-          onClick={() => void bid(nextBid + BID_STEP)}
-        >
-          +{formatUsd(BID_STEP)}
-        </button>
-        <button
-          className="panel-secondary-button"
-          type="button"
-          onClick={() => setShowCustom((v) => !v)}
-        >
-          Custom
-        </button>
+        {nextBid <= bidCeiling ? (
+          <button
+            className="panel-bid-button"
+            type="button"
+            disabled={placing}
+            onClick={() => void bid(nextBid)}
+          >
+            {placing ? 'Placing…' : `Bid ${formatUsd(nextBid)}`}
+          </button>
+        ) : (
+          <span className="panel-bid-capped">Next bid reaches Buy Now</span>
+        )}
+        {nextBid + BID_STEP <= bidCeiling && (
+          <button
+            className="panel-secondary-button"
+            type="button"
+            disabled={placing}
+            onClick={() => void bid(nextBid + BID_STEP)}
+          >
+            +{formatUsd(BID_STEP)}
+          </button>
+        )}
+        {nextBid <= bidCeiling && (
+          <button
+            className="panel-secondary-button"
+            type="button"
+            onClick={() => setShowCustom((v) => !v)}
+          >
+            Custom
+          </button>
+        )}
       </div>
 
-      {showCustom && (
+      {buyNow !== null && (
+        <button
+          className={confirmingBuy ? 'panel-buy-now panel-buy-now--confirm' : 'panel-buy-now'}
+          type="button"
+          disabled={placing}
+          onClick={() => {
+            if (!confirmingBuy) {
+              armedAt.current = Date.now()
+              setConfirmingBuy(true)
+              return
+            }
+            if (Date.now() - armedAt.current < BUY_NOW_ARM_MS) return
+            setConfirmingBuy(false)
+            void bid(buyNow)
+          }}
+        >
+          {confirmingBuy
+            ? `Tap again to buy for ${formatUsd(buyNow)}`
+            : `Buy now for ${formatUsd(buyNow)}`}
+        </button>
+      )}
+
+      {showCustom && minBid <= bidCeiling && (
         <form
           className="panel-custom"
           onSubmit={(event) => {
@@ -323,12 +393,12 @@ function BidRow({ state, auction }: { state: SessionState; auction: AuctionSessi
           <input
             type="number"
             inputMode="numeric"
-            min={nextBid}
-            max={MAX_BID}
+            min={minBid}
+            max={bidCeiling}
             step={1}
             value={custom}
             onChange={(event) => setCustom(event.target.value)}
-            placeholder={`${nextBid} or more`}
+            placeholder={`${minBid} or more`}
             aria-label="Custom bid amount"
           />
           <button className="panel-secondary-button" type="submit" disabled={!customValid || placing}>
@@ -360,6 +430,7 @@ function ClosedState({ state }: { state: SessionState }) {
         <>
           <span className="panel-sold-word">Sold</span>
           <span className="panel-sold-price">{formatUsd(session.currentBid)}</span>
+          {session.boughtNow && <span className="panel-badge">Buy Now</span>}
         </>
       ) : (
         <span className="panel-not-sold">
@@ -375,6 +446,7 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
   const [itemName, setItemName] = useState(session.itemName)
   const [openingBid, setOpeningBid] = useState(String(session.openingBid || 100))
   const [reserve, setReserve] = useState(session.reservePrice === null ? '' : String(session.reservePrice))
+  const [buyNow, setBuyNow] = useState(session.buyNowPrice === null ? '' : String(session.buyNowPrice))
   const [seconds, setSeconds] = useState('60')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -383,7 +455,15 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
   const opening = Number.parseInt(openingBid, 10)
   const reserveValue = reserve.trim() === '' ? null : Number.parseInt(reserve, 10)
   const secs = Number.parseInt(seconds, 10)
+  const buyNowValue = buyNow.trim() === '' ? null : Number.parseInt(buyNow, 10)
+  const buyNowValid =
+    buyNowValue === null ||
+    (Number.isInteger(buyNowValue) &&
+      buyNowValue > opening &&
+      buyNowValue <= MAX_BID &&
+      (reserveValue === null || buyNowValue >= reserveValue))
   const valid =
+    buyNowValid &&
     itemName.trim().length > 0 &&
     Number.isInteger(opening) && opening >= 0 && opening <= MAX_BID &&
     (reserveValue === null || (Number.isInteger(reserveValue) && reserveValue >= 0 && reserveValue <= MAX_BID)) &&
@@ -398,6 +478,7 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
         itemName: itemName.trim(),
         openingBid: opening,
         reservePrice: reserveValue,
+        buyNowPrice: buyNowValue,
         seconds: secs,
       })
       if (!result.ok) {
@@ -468,10 +549,17 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
               <input type="number" inputMode="numeric" min={0} max={MAX_BID} value={reserve} onChange={(e) => setReserve(e.target.value)} placeholder="none" />
             </label>
             <label>
+              Buy Now (optional)
+              <input type="number" inputMode="numeric" min={1} max={MAX_BID} value={buyNow} onChange={(e) => setBuyNow(e.target.value)} placeholder="none" />
+            </label>
+            <label>
               Round length (s)
               <input type="number" inputMode="numeric" min={5} max={3600} value={seconds} onChange={(e) => setSeconds(e.target.value)} />
             </label>
           </div>
+          {!buyNowValid && (
+            <p className="panel-host-hint">Buy Now must be above the opening bid and not below the reserve.</p>
+          )}
           <button className="button button--primary" type="submit" disabled={!valid || busy}>
             {busy ? 'Starting…' : session.status === 'closed' ? 'Start next round' : 'Start round'}
           </button>
@@ -483,6 +571,64 @@ function HostControls({ state, auction }: { state: SessionState; auction: Auctio
           {message}
         </p>
       )}
+    </div>
+  )
+}
+
+// Finished rounds for whoever runs the auction, with a CSV for collecting
+// payment outside the app. The server refuses this to non-hosts on meeting
+// sessions, in which case nothing renders.
+function Results({ state, sessionKey }: { state: SessionState; sessionKey: string }) {
+  const { session } = state
+  const [rounds, setRounds] = useState<RoundRecord[] | null>(null)
+
+  useEffect(() => {
+    let active = true
+    fetchResults(sessionKey)
+      .then((next) => {
+        if (active) setRounds(next)
+      })
+      .catch(() => {
+        // Transient; the next round change refetches.
+      })
+    return () => {
+      active = false
+    }
+  }, [sessionKey, session.status, session.roundNo])
+
+  if (!rounds || rounds.length === 0) return null
+  const sold = rounds.filter((round) => round.outcome === 'sold')
+  const total = sold.reduce((sum, round) => sum + round.finalBid, 0)
+
+  return (
+    <div className="panel-results">
+      <div className="section-heading">
+        <p className="context-label">RESULTS</p>
+        <span>
+          {sold.length} of {rounds.length} sold · {formatUsd(total)}
+        </span>
+      </div>
+      <ol className="panel-results-list">
+        {rounds.map((round) => (
+          <li key={round.roundNo}>
+            <span className="panel-results-round">{round.roundNo}</span>
+            <span className="panel-results-item">
+              <strong>{round.itemName}</strong>
+              <span>
+                {round.outcome === 'sold' && round.winner
+                  ? `${outcomeLabel(round)} to ${round.winner.name} #${round.winner.bidderKey.slice(-4)}`
+                  : outcomeLabel(round)}
+              </span>
+            </span>
+            <span className="panel-results-price">
+              {round.outcome === 'sold' ? formatUsd(round.finalBid) : '–'}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <a className="button button--secondary panel-results-download" href={resultsUrl(sessionKey, 'csv')} download="gavel-results.csv">
+        Download results (CSV)
+      </a>
     </div>
   )
 }

@@ -14,10 +14,10 @@ import {
 } from '@/lib/gavel/client-api'
 import { DEMO_LOT_NAME, DEMO_OPENING_BID, anonBidderKey, describeError } from '@/lib/gavel/demo'
 import {
-  toBid,
+  toLeaderboard,
   toSessionInfo,
-  type Bid,
-  type BidRow,
+  type LeaderEntry,
+  type LeaderRow,
   type SessionInfo,
   type SessionRow,
   type SessionState,
@@ -52,23 +52,49 @@ const RESYNC_MS = 30_000
 // jittered exponential backoff so a hiccup never pins it to polling.
 const STREAM_RETRY_BASE_MS = 15_000
 const STREAM_RETRY_MAX_MS = 120_000
-const MAX_BIDS = 50
 
-function mergeBids(existing: Bid[], incoming: Bid[]) {
-  const byId = new Map<number, Bid>()
-  for (const b of existing) byId.set(b.id, b)
-  for (const b of incoming) byId.set(b.id, b)
-  return Array.from(byId.values())
-    .sort((a, b) => b.id - a.id)
-    .slice(0, MAX_BIDS)
+// This browser's own best bid per session, so an unverified bidder still
+// sees their amount after a reload. The server cannot tell anonymous
+// viewers apart, so it never sends them one.
+type OwnBid = { bidderKey: string; roundNo: number; amount: number }
+
+function ownBidStorageKey(sessionKey: string) {
+  return `gavel-own:${sessionKey}`
+}
+
+function readOwnBid(sessionKey: string): OwnBid | null {
+  try {
+    const raw = window.sessionStorage.getItem(ownBidStorageKey(sessionKey))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<OwnBid>
+    return typeof parsed.bidderKey === 'string' &&
+      typeof parsed.roundNo === 'number' &&
+      typeof parsed.amount === 'number'
+      ? { bidderKey: parsed.bidderKey, roundNo: parsed.roundNo, amount: parsed.amount }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function writeOwnBid(sessionKey: string, own: OwnBid) {
+  try {
+    window.sessionStorage.setItem(ownBidStorageKey(sessionKey), JSON.stringify(own))
+  } catch {
+    // Storage blocked (some embedded webviews): memory still has it.
+  }
 }
 
 // Transport ladder: direct Supabase Realtime, then Server-Sent Events from
 // our own origin, then 1s polling. Inside Zoom the ladder starts at SSE:
 // the webview's websocket support and domain allow list are out of our
-// hands, and supabase-js must never even load there. Every
-// accepted update passes a monotonic guard on session.updatedAt, and bids
-// merge by id, so no path can regress the view.
+// hands, and supabase-js must never even load there. Every accepted
+// update passes a monotonic guard on session.updatedAt, so no path can
+// regress the view.
+//
+// Bid amounts are private. Pushed leaderboards carry ranks only, so this
+// hook fills back in what the viewer is entitled to: their own amount, and
+// for the host the amounts from the last full read (refreshed right after).
 export function useAuctionSession(
   sessionKey: string,
   bidderName: string,
@@ -84,6 +110,42 @@ export function useAuctionSession(
   const latestState = useRef<SessionState | null>(null)
   const offsetMs = useRef(0)
   const endsAtRef = useRef<string | null>(null)
+  const anonKeyRef = useRef<string | null>(null)
+  const ownBid = useRef<OwnBid | null>(null)
+  const ownBidLoaded = useRef(false)
+
+  const reveal = useCallback(
+    (state: SessionState, previous: SessionState | null): SessionState => {
+      if (!ownBidLoaded.current) {
+        ownBidLoaded.current = true
+        ownBid.current = readOwnBid(sessionKey)
+      }
+      const roundNo = state.session.roundNo
+      const self =
+        (state.viewer.verified ? state.viewer.bidderKey : null) ?? anonKeyRef.current
+      // A full read may name this viewer's amount: remember it for pushes.
+      const mine = state.leaderboard.find((e) => e.bidderKey === self && e.amount !== null)
+      if (self && mine && mine.amount !== null) {
+        ownBid.current = { bidderKey: self, roundNo, amount: mine.amount }
+      }
+      // Only ever shown against the identity and round that placed it.
+      const own =
+        ownBid.current?.roundNo === roundNo && ownBid.current.bidderKey === self
+          ? ownBid.current.amount
+          : null
+      const carried =
+        state.viewer.isHost && previous && previous.session.roundNo === roundNo
+          ? new Map(previous.leaderboard.map((e) => [e.bidderKey, e.amount]))
+          : null
+      const fill = (entry: LeaderEntry): LeaderEntry => {
+        if (entry.amount !== null) return entry
+        const amount = (entry.bidderKey === self ? own : null) ?? carried?.get(entry.bidderKey) ?? null
+        return amount === null ? entry : { ...entry, amount }
+      }
+      return { ...state, leaderboard: state.leaderboard.map(fill) }
+    },
+    [sessionKey],
+  )
 
   const noteExtension = useCallback((nextEndsAt: string | null, status: string) => {
     const prev = endsAtRef.current
@@ -98,65 +160,44 @@ export function useAuctionSession(
       offsetMs.current = new Date(next.serverNow).getTime() - Date.now()
       const current = latestState.current
       if (current && next.session.updatedAt < latestUpdatedAt.current) {
-        // Older session snapshot, but the ladder and viewer may still be
-        // fresher than what we hold: merge those without touching the session.
-        const merged: SessionState = {
-          ...current,
-          bids: mergeBids(current.bids, next.bids),
-          viewer: next.viewer,
-          serverNow: next.serverNow,
-        }
+        // Older session snapshot: keep what we hold, but the viewer block
+        // (host claim, verification) may still be fresher, and a bid this
+        // viewer just placed may need filling in.
+        const merged = reveal({ ...current, viewer: next.viewer, serverNow: next.serverNow }, current)
         latestState.current = merged
         setSync({ phase: 'live', state: merged })
         return
       }
       latestUpdatedAt.current = next.session.updatedAt
       noteExtension(next.session.endsAt, next.session.status)
-      const merged: SessionState = {
-        ...next,
-        bids: current ? mergeBids(current.bids, next.bids) : next.bids,
-      }
-      // A new round resets the ladder.
-      if (current && current.session.roundNo !== next.session.roundNo) {
-        merged.bids = next.bids
-      }
+      const merged = reveal(next, current)
       latestState.current = merged
       setSync({ phase: 'live', state: merged })
     },
-    [noteExtension],
+    [noteExtension, reveal],
   )
 
-  // Returns true when the change affects what this viewer may do (host
-  // claimed or verified), which only a full state read can recompute.
+  // Returns true when only a full state read can finish the update: the
+  // host claim changed (what this viewer may do), or this viewer is the
+  // host and is owed the amounts a push never carries.
   const applySessionInfo = useCallback(
-    (session: SessionInfo) => {
+    (session: SessionInfo, leaderboard: LeaderEntry[]) => {
       const current = latestState.current
       if (!current) return false
       if (session.updatedAt <= latestUpdatedAt.current) return false
       latestUpdatedAt.current = session.updatedAt
       noteExtension(session.endsAt, session.status)
-      const merged: SessionState = {
-        ...current,
-        session,
-        bids: session.roundNo !== current.session.roundNo ? [] : current.bids,
-      }
+      const merged = reveal({ ...current, session, leaderboard }, current)
       latestState.current = merged
       setSync({ phase: 'live', state: merged })
       return (
+        current.viewer.isHost ||
         session.hostClaimed !== current.session.hostClaimed ||
         session.hostVerified !== current.session.hostVerified
       )
     },
-    [noteExtension],
+    [noteExtension, reveal],
   )
-
-  const applyBid = useCallback((bid: Bid, roundNo: number) => {
-    const current = latestState.current
-    if (!current || roundNo !== current.session.roundNo) return
-    const merged: SessionState = { ...current, bids: mergeBids(current.bids, [bid]) }
-    latestState.current = merged
-    setSync({ phase: 'live', state: merged })
-  }, [])
 
   const loadOrCreate = useCallback(async () => {
     try {
@@ -186,8 +227,8 @@ export function useAuctionSession(
     let resyncId: ReturnType<typeof setInterval> | null = null
     let teardownPush: (() => void) | null = null
 
-    const onSession = (session: SessionInfo) => {
-      if (applySessionInfo(session)) void refresh()
+    const onSession = (session: SessionInfo, leaderboard: LeaderEntry[]) => {
+      if (applySessionInfo(session, leaderboard)) void refresh()
     }
 
     function startResync() {
@@ -260,12 +301,8 @@ export function useAuctionSession(
         if (active && state) applyState(state)
       })
       source.addEventListener('session', (event) => {
-        const data = parse(event) as { session?: SessionInfo }
-        if (active && data.session) onSession(data.session)
-      })
-      source.addEventListener('bid', (event) => {
-        const data = parse(event) as { bid?: Bid; roundNo?: number }
-        if (active && data.bid && typeof data.roundNo === 'number') applyBid(data.bid, data.roundNo)
+        const data = parse(event) as { session?: SessionInfo; leaderboard?: LeaderEntry[] }
+        if (active && data.session) onSession(data.session, data.leaderboard ?? [])
       })
       source.addEventListener('fallback', () => {
         if (active) fallBackFromStream()
@@ -296,16 +333,16 @@ export function useAuctionSession(
           .channel(`session:${sessionKey}`, { config: { private: true } })
           .on('broadcast', { event: 'UPDATE' }, (message) => {
             if (!active) return
-            const payload = message.payload as { table?: string; record?: SessionRow }
-            if (payload?.table === 'auction_sessions' && payload.record?.uuid) {
-              onSession(toSessionInfo(payload.record))
+            const payload = message.payload as {
+              table?: string
+              record?: SessionRow
+              leaderboard?: LeaderRow[]
             }
-          })
-          .on('broadcast', { event: 'INSERT' }, (message) => {
-            if (!active) return
-            const payload = message.payload as { table?: string; record?: BidRow & { round_no: number } }
-            if (payload?.table === 'auction_bids' && payload.record?.id) {
-              applyBid(toBid(payload.record), payload.record.round_no)
+            if (payload?.table === 'auction_sessions' && payload.record?.uuid) {
+              onSession(
+                toSessionInfo(payload.record),
+                toLeaderboard(payload.leaderboard ?? [], payload.record.current_bid),
+              )
             }
           })
           .subscribe((status) => {
@@ -336,23 +373,40 @@ export function useAuctionSession(
       if (streamRetryId !== null) clearTimeout(streamRetryId)
       teardownPush?.()
     }
-  }, [sessionKey, inZoom, loadOrCreate, refresh, applyState, applySessionInfo, applyBid])
+  }, [sessionKey, inZoom, loadOrCreate, refresh, applyState, applySessionInfo])
 
   useEffect(() => {
     let active = true
     void anonBidderKey(bidderName).then((k) => {
-      if (active) setAnonKey(k)
+      if (!active) return
+      anonKeyRef.current = k
+      setAnonKey(k)
+      // The key arrived after the first state: fill in this viewer's amount.
+      const current = latestState.current
+      if (current) {
+        const merged = reveal(current, current)
+        latestState.current = merged
+        setSync({ phase: 'live', state: merged })
+      }
     })
     return () => {
       active = false
     }
-  }, [bidderName])
+  }, [bidderName, reveal])
 
   const now = useCallback(() => Date.now() + offsetMs.current, [])
 
   const placeBid = useCallback(
     async (amount: number) => {
       const result = await postBid(sessionKey, amount, bidderName)
+      if (result.accepted) {
+        const viewer = result.state.viewer
+        const self = (viewer.verified ? viewer.bidderKey : null) ?? anonKeyRef.current
+        if (self) {
+          ownBid.current = { bidderKey: self, roundNo: result.state.session.roundNo, amount: result.amount }
+          writeOwnBid(sessionKey, ownBid.current)
+        }
+      }
       if (result.state) applyState(result.state)
       return result
     },

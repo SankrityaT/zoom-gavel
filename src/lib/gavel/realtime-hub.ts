@@ -1,18 +1,25 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
-import { toBid, toSessionInfo, type Bid, type BidRow, type SessionInfo, type SessionRow } from './types'
+import {
+  toLeaderboard,
+  toSessionInfo,
+  type LeaderEntry,
+  type LeaderRow,
+  type SessionInfo,
+  type SessionRow,
+} from './types'
 
 // Server-side fan-out for the SSE stream. One Supabase Realtime channel per
 // session key per server instance, shared by every stream on that instance
 // and torn down when the last one leaves. Events are sanitized here:
-// SessionInfo never carries host_key, only hostClaimed / hostVerified.
+// SessionInfo never carries host_key, only hostClaimed / hostVerified, and
+// the leaderboard is the public one (ranks, no private amounts).
 //
 // Uses the anon key: the private session:<key> topics are readable by
 // anyone holding the key (migration 004), so no elevated role is needed on
 // a long-lived socket.
 
 export type HubEvent =
-  | { type: 'session'; session: SessionInfo }
-  | { type: 'bid'; bid: Bid; roundNo: number }
+  | { type: 'session'; session: SessionInfo; leaderboard: LeaderEntry[] }
   | { type: 'down' }
 
 type Listener = (event: HubEvent) => void
@@ -72,26 +79,33 @@ function openRoom(sessionKey: string): Room {
       const channel = getClient()
         .channel(`session:${sessionKey}`, { config: { private: true } })
         .on('broadcast', { event: 'UPDATE' }, (message) => {
-          const payload = message.payload as { table?: string; record?: SessionRow }
-          if (payload?.table === 'auction_sessions' && payload.record?.uuid === sessionKey) {
-            emit({ type: 'session', session: toSessionInfo(payload.record) })
-          }
-        })
-        .on('broadcast', { event: 'INSERT' }, (message) => {
           const payload = message.payload as {
             table?: string
-            record?: BidRow & { round_no: number; session_uuid: string }
+            record?: SessionRow
+            leaderboard?: LeaderRow[]
           }
-          const record = payload?.record
-          if (payload?.table === 'auction_bids' && record?.id && record.session_uuid === sessionKey) {
-            emit({ type: 'bid', bid: toBid(record), roundNo: record.round_no })
+          if (payload?.table === 'auction_sessions' && payload.record?.uuid === sessionKey) {
+            emit({
+              type: 'session',
+              session: toSessionInfo(payload.record),
+              leaderboard: toLeaderboard(payload.leaderboard ?? [], payload.record.current_bid),
+            })
           }
         })
       room.channel = channel
 
-      channel.subscribe((status) => {
+      let subscribed = false
+      channel.subscribe((status, error) => {
         if (status === 'SUBSCRIBED') {
+          subscribed = true
           resolve(true)
+          return
+        }
+        // A first join can fail transiently and supabase-js rejoins on its
+        // own, so before the channel has ever been live an error is not
+        // fatal: the stream's ready timeout bounds how long anyone waits.
+        if (status === 'CHANNEL_ERROR' && !subscribed) {
+          console.warn('realtime join failed, waiting for rejoin:', error?.message ?? 'unknown')
           return
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {

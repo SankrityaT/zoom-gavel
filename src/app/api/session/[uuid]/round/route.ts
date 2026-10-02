@@ -56,6 +56,16 @@ export async function POST(
       if (payload.reservePrice != null && reservePrice === null) {
         return badRequest('reservePrice must be an integer within bounds')
       }
+      const buyNowPrice =
+        payload.buyNowPrice === undefined || payload.buyNowPrice === null
+          ? null
+          : boundedInt(payload.buyNowPrice, 1)
+      if (payload.buyNowPrice != null && buyNowPrice === null) {
+        return badRequest('buyNowPrice must be an integer within bounds')
+      }
+      if (buyNowPrice !== null && (buyNowPrice <= openingBid || (reservePrice !== null && buyNowPrice < reservePrice))) {
+        return badRequest('buyNowPrice must be above the opening bid and not below the reserve')
+      }
       const seconds = boundedInt(payload.seconds, 5, 3600)
       if (seconds === null) return badRequest('seconds must be between 5 and 3600')
       const extendWindowSeconds =
@@ -73,6 +83,7 @@ export async function POST(
         itemName,
         openingBid,
         reservePrice,
+        buyNowPrice,
         seconds,
         extendWindowSeconds,
         extendBySeconds,
@@ -95,6 +106,8 @@ export async function POST(
         return NextResponse.json({ error: 'not the host' }, { status: 403 })
       case 'bad_seconds':
         return badRequest('seconds must be between 5 and 3600')
+      case 'bad_buy_now':
+        return badRequest('buyNowPrice must be above the opening bid and not below the reserve')
       case 'not_found':
         return NextResponse.json({ error: 'session not found' }, { status: 404 })
       default:

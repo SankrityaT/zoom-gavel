@@ -69,6 +69,10 @@ const start = (k, opts = {}, cookie) =>
   })
 const stop = (k, cookie) => api(`${encodeURIComponent(k)}/round`, { method: 'POST', body: { action: 'stop' }, cookie })
 
+// Bid amounts are private, so scenarios read the public leaderboard: one
+// entry per bidder with a bid count and last-bid time, amounts withheld.
+const totalBids = (state) => state.leaderboard.reduce((sum, e) => sum + e.bids, 0)
+
 function histogram(list) {
   return list.reduce((acc, r) => ((acc[r.status] = (acc[r.status] ?? 0) + 1), acc), {})
 }
@@ -97,13 +101,14 @@ await scenario('S1', 'distinct-amount storm', async () => {
   const h = histogram(rs)
   const accepted = rs.filter((r) => r.status === 200).map((r) => r.json.state.session.currentBid)
   const { json } = await get(k)
-  const ladder = json.bids
   check('S1 all 200/409', (h[200] ?? 0) + (h[409] ?? 0) === 20, JSON.stringify(h))
   check('S1 rejections are too_low', rs.filter((r) => r.status === 409).every((r) => r.json.reason === 'too_low'))
   check('S1 currentBid is max accepted', json.session.currentBid === Math.max(...accepted))
-  check('S1 ladder count', ladder.length === (h[200] ?? 0), `${ladder.length} vs ${h[200]}`)
-  const byId = [...ladder].sort((a, b) => a.id - b.id).map((b) => b.amount)
-  check('S1 ladder strictly increasing', byId.every((v, i) => i === 0 || v > byId[i - 1]), byId.join(','))
+  check('S1 bid count', totalBids(json) === (h[200] ?? 0), `${totalBids(json)} vs ${h[200]}`)
+  check('S1 leader holds the current price', json.leaderboard[0]?.amount === json.session.currentBid)
+  const order = json.leaderboard.map((e) => new Date(e.lastBidAt).getTime())
+  check('S1 ranks follow bid order', order.every((v, i) => i === 0 || v < order[i - 1]), order.join(','))
+  check('S1 other amounts withheld', json.leaderboard.slice(1).every((e) => e.amount === null))
 })
 
 await scenario('S2', 'identical amount collision', async () => {
@@ -114,7 +119,7 @@ await scenario('S2', 'identical amount collision', async () => {
   const h = histogram(rs)
   const { json } = await get(k)
   check('S2 exactly one accepted', h[200] === 1 && h[409] === 9, JSON.stringify(h))
-  check('S2 one bid row', json.bids.length === 1)
+  check('S2 one bid row', totalBids(json) === 1)
 })
 
 await scenario('S3', 'bid after expiry', async () => {
@@ -154,7 +159,7 @@ await scenario('S4', 'bids at the expiry boundary', async () => {
   check('S4 pre-boundary bids not expired', rs.slice(0, 2).every((r) => r.status === 200 || r.json?.reason === 'too_low'), JSON.stringify(rs.slice(0, 2).map((r) => [r.status, r.json?.reason])))
   check('S4 post-boundary bids rejected', rs.slice(2).every((r) => r.status === 409 && ['expired', 'not_open'].includes(r.json.reason)), JSON.stringify(rs.slice(2).map((r) => [r.status, r.json?.reason])))
   const { json } = await get(k)
-  check('S4 accepted bids before endsAt', json.bids.every((b) => new Date(b.createdAt).getTime() <= new Date(json.session.endsAt).getTime() + 50))
+  check('S4 accepted bids before endsAt', json.leaderboard.every((e) => new Date(e.lastBidAt).getTime() <= new Date(json.session.endsAt).getTime() + 50))
 })
 
 await scenario('S5', 'anti-snipe extension', async () => {
@@ -184,8 +189,8 @@ await scenario('S6', 'colliding extensions', async () => {
   const finalNow = Math.max(...accepted.map((r) => new Date(r.json.state.serverNow).getTime()))
   check('S6 deadline pushed ~15s', finalEnds >= finalNow + 10_000, `${finalEnds - finalNow}ms`)
   const ordered = accepted
-    .map((r) => ({ id: r.json.state.bids[0]?.id ?? 0, endsAt: new Date(r.json.state.session.endsAt).getTime() }))
-    .sort((a, b) => a.id - b.id)
+    .map((r) => ({ amount: r.json.amount, endsAt: new Date(r.json.state.session.endsAt).getTime() }))
+    .sort((a, b) => a.amount - b.amount)
   check('S6 endsAt non-decreasing', ordered.every((v, i) => i === 0 || v.endsAt >= ordered[i - 1].endsAt))
 })
 
@@ -201,11 +206,11 @@ await scenario('S7', 'host stop vs in-flight bids', async () => {
   const { json } = await get(k)
   check('S7 closed', json.session.status === 'closed')
   const acceptedAmounts = bids.filter((r) => r.status === 200).map((r) => r.json.state.session.currentBid)
-  check('S7 accepted bids in ladder', acceptedAmounts.every((a) => json.bids.some((b) => b.amount === a)))
+  check('S7 accepted bids all recorded', totalBids(json) === acceptedAmounts.length, `${totalBids(json)} vs ${acceptedAmounts.length}`)
   check('S7 currentBid is max accepted', acceptedAmounts.length === 0 || json.session.currentBid === Math.max(...acceptedAmounts))
   check('S7 rejections are not_open/too_low', bids.filter((r) => r.status === 409).every((r) => ['not_open', 'too_low', 'expired'].includes(r.json.reason)))
   const closedAt = new Date(json.session.closedAt).getTime()
-  check('S7 no bid after closedAt', json.bids.every((b) => new Date(b.createdAt).getTime() <= closedAt + 50))
+  check('S7 no bid after closedAt', json.leaderboard.every((e) => new Date(e.lastBidAt).getTime() <= closedAt + 50))
 })
 
 await scenario('S8', 'bid on idle session', async () => {
@@ -255,7 +260,7 @@ if (SESSION_SECRET) {
     const r4 = await stop(k, cookieAOther)
     check('S11d A from other meeting -> 403', r4.status === 403, String(r4.status))
     const rb = await bid(k, 150, 'Bee', cookieB)
-    check('S11 verified bid accepted', rb.status === 200 && rb.json.state.bids[0].verified === true)
+    check('S11 verified bid accepted', rb.status === 200 && rb.json.state.leaderboard[0].verified === true)
     const r5 = await stop(k, cookieA)
     check('S11e A stops', r5.status === 200 && r5.json.state.session.status === 'closed', String(r5.status))
   })
@@ -288,8 +293,16 @@ await scenario('S13', 'rate limit on one bidder', async () => {
   check('S13 other bidder unaffected', other.status === 200, String(other.status))
 })
 
-// Reads SSE events from a fetch body until `want` returns true or timeout.
-async function readStream(k, { timeoutMs = 15000, cookie } = {}, want) {
+// Reads SSE events until `want` returns true or timeout. Like EventSource,
+// it reconnects once if the server ends a stream before sending anything.
+async function readStream(k, options = {}, want) {
+  const first = await readStreamOnce(k, options, want)
+  if (first.status !== 200 || first.events.length > 0) return first
+  await sleep(1000)
+  return readStreamOnce(k, options, want)
+}
+
+async function readStreamOnce(k, { timeoutMs = 15000, cookie } = {}, want) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const events = []
@@ -341,19 +354,18 @@ await scenario('S15', 'SSE stream pushes bids', async () => {
       bidSentAt = Date.now()
       bidRequest = bid(k, 175, 'streamer')
     }
-    return evts.some((e) => e.name === 'bid')
+    return evts.some((e) => e.name === 'session' && e.data?.session?.currentBid === 175)
   })
   const r = bidRequest ? await bidRequest : { status: 0 }
   const names = events.map((e) => e.name)
   check('S15 stream 200', status === 200, String(status))
   check('S15 snapshot first', names[0] === 'state' && events[0].data?.session?.uuid === k, names.join(','))
   check('S15 bid accepted', r.status === 200, String(r.status))
-  const bidEvent = events.find((e) => e.name === 'bid')
-  check('S15 bid pushed', bidEvent?.data?.bid?.amount === 175, JSON.stringify(bidEvent?.data))
-  check('S15 push under 1.5s', bidEvent && bidEvent.at - bidSentAt < 1500, bidEvent ? `${bidEvent.at - bidSentAt}ms` : 'none')
-  const sessionEvent = events.find((e) => e.name === 'session')
+  const pushed = events.find((e) => e.name === 'session' && e.data?.session?.currentBid === 175)
+  check('S15 bid pushed', pushed?.data?.leaderboard?.length === 1 && pushed.data.leaderboard[0].bids === 1, JSON.stringify(pushed?.data?.leaderboard))
+  check('S15 push under 1.5s', pushed && pushed.at - bidSentAt < 1500, pushed ? `${pushed.at - bidSentAt}ms` : 'none')
   check('S15 no host_key leak', !JSON.stringify(events).includes('host_key'))
-  check('S15 session delta', !sessionEvent || sessionEvent.data.session.currentBid >= 100)
+  check('S15 no per-bid events', !events.some((e) => e.name === 'bid'))
   const bad = await fetch(`${BASE_URL}/api/session/${encodeURIComponent('bad key!')}/stream`)
   check('S15 invalid key 400', bad.status === 400, String(bad.status))
 })
@@ -399,6 +411,123 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
   })
 } else {
   console.log('SKIP  S14 webhook host (set ZOOM_WEBHOOK_SECRET_TOKEN and SESSION_SECRET to run)')
+}
+
+await scenario('S17', 'buy now race', async () => {
+  const bad1 = await start(key(), { openingBid: 100, buyNowPrice: 100 })
+  const bad2 = await start(key(), { openingBid: 100, reservePrice: 400, buyNowPrice: 300 })
+  check('S17 buy now at opening -> 400', bad1.status === 400, String(bad1.status))
+  check('S17 buy now under reserve -> 400', bad2.status === 400, String(bad2.status))
+
+  const k = key()
+  await init(k)
+  const s = await start(k, { openingBid: 100, buyNowPrice: 500 })
+  check('S17 round carries buy now', s.status === 200 && s.json.state.session.buyNowPrice === 500, JSON.stringify(s.json?.state?.session?.buyNowPrice))
+  const normal = await bid(k, 150, 'steady')
+  check('S17 bid under buy now stays open', normal.status === 200 && normal.json.bought === false && normal.json.state.session.status === 'open')
+  // Ten buyers in the same instant, at and above the price: one wins, at
+  // exactly the Buy Now price, and the round is closed for everyone else.
+  const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => bid(k, 500 + 100 * i, `buyer-${i}`)))
+  const h = histogram(rs)
+  const winners = rs.filter((r) => r.status === 200)
+  check('S17 exactly one buyer', winners.length === 1 && h[409] === 9, JSON.stringify(h))
+  check('S17 sold at the buy now price', winners[0]?.json.bought === true && winners[0].json.amount === 500, JSON.stringify([winners[0]?.json.bought, winners[0]?.json.amount]))
+  check('S17 losers see the round closed', rs.filter((r) => r.status === 409).every((r) => r.json.reason === 'not_open'), JSON.stringify(rs.map((r) => r.json?.reason)))
+  const { json } = await get(k)
+  check('S17 closed as bought', json.session.status === 'closed' && json.session.boughtNow === true && json.session.currentBid === 500)
+  check('S17 two bids on record', totalBids(json) === 2, String(totalBids(json)))
+  const late = await bid(k, 900, 'late')
+  check('S17 no bids after buy now', late.status === 409 && late.json.reason === 'not_open')
+})
+
+await scenario('S18', 'results and CSV export', async () => {
+  const k = key()
+  await init(k)
+  await start(k, { itemName: '=HYPERLINK("http://x","Lot, one")', openingBid: 100 })
+  await bid(k, 150, 'Winner One')
+  await stop(k)
+  await start(k, { itemName: 'No takers', openingBid: 100 })
+  await stop(k)
+  await start(k, { itemName: 'Under reserve', openingBid: 100, reservePrice: 500 })
+  await bid(k, 200, 'Too low')
+  await stop(k)
+  await start(k, { itemName: 'Instant', openingBid: 100, buyNowPrice: 300 })
+  await bid(k, 300, 'Buyer')
+  // Round 5 expires with nobody reading the session, then round 6 starts
+  // straight over it: the unclosed round must still be recorded.
+  await start(k, { itemName: 'Expired quietly', openingBid: 100, seconds: 5, extendWindowSeconds: 0 })
+  await bid(k, 120, 'Quiet')
+  await sleep(5600)
+  await start(k, { itemName: 'Last lot', openingBid: 100 })
+  await stop(k)
+
+  const res = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/results`)
+  const rounds = (await res.json()).rounds
+  check('S18 results 200', res.status === 200, String(res.status))
+  check('S18 every finished round listed', rounds.length === 6, String(rounds.length))
+  check('S18 outcomes', JSON.stringify(rounds.map((r) => r.outcome)) === JSON.stringify(['sold', 'no_bids', 'reserve_not_met', 'sold', 'sold', 'no_bids']), JSON.stringify(rounds.map((r) => r.outcome)))
+  check('S18 winner and price', rounds[0].winner?.name === 'Winner One' && rounds[0].finalBid === 150 && rounds[0].bidCount === 1)
+  check('S18 buy now flagged', rounds[3].boughtNow === true && rounds[3].finalBid === 300)
+  check('S18 expired round recorded', rounds[4].winner?.name === 'Quiet' && rounds[4].finalBid === 120)
+
+  const csvRes = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/results?format=csv`)
+  const csv = await csvRes.text()
+  const lines = csv.trim().split('\r\n')
+  check('S18 csv headers', csvRes.headers.get('content-type')?.startsWith('text/csv') && (csvRes.headers.get('content-disposition') ?? '').includes('attachment'))
+  check('S18 csv has a row per round', lines.length === 7, String(lines.length))
+  check('S18 csv neutralizes formulas', lines[1].startsWith(`1,"'=HYPERLINK(""http://x"",""Lot, one"")",Sold,150,Winner One,`), lines[1])
+  check('S18 unsold rows carry no winner', lines[2].startsWith('2,No takers,Not sold (no bids),,,'), lines[2])
+  const missing = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(key())}/results`)
+  check('S18 unknown session 404', missing.status === 404, String(missing.status))
+})
+
+if (SESSION_SECRET) {
+  await scenario('S16', 'bid amounts stay private', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const host = mintCookie('userHost', mid)
+    const alice = mintCookie('userAlice', mid)
+    const bob = mintCookie('userBob', mid)
+    await start(k, {}, host)
+    await bid(k, 150, 'Alice', alice)
+    await bid(k, 200, 'Bob', bob)
+    const top = await bid(k, 250, 'Guest')
+    check('S16 three bidders ranked', top.status === 200 && top.json.state.leaderboard.length === 3, JSON.stringify(top.json?.state?.leaderboard?.length))
+
+    const byName = (state) => Object.fromEntries(state.leaderboard.map((e) => [e.name, e.amount]))
+    const asAlice = byName((await get(k, alice)).json)
+    const asBob = byName((await get(k, bob)).json)
+    const asHost = byName((await get(k, host)).json)
+    const asAnon = byName((await get(k)).json)
+    check('S16 leader amount is the public price', [asAlice, asBob, asHost, asAnon].every((v) => v.Guest === 250))
+    check('S16 alice sees only her own', asAlice.Alice === 150 && asAlice.Bob === null, JSON.stringify(asAlice))
+    check('S16 bob sees only his own', asBob.Bob === 200 && asBob.Alice === null, JSON.stringify(asBob))
+    check('S16 host sees every amount', asHost.Alice === 150 && asHost.Bob === 200, JSON.stringify(asHost))
+    check('S16 anonymous sees none', asAnon.Alice === null && asAnon.Bob === null, JSON.stringify(asAnon))
+    const ranks = (await get(k)).json.leaderboard.map((e) => [e.rank, e.name])
+    check('S16 ranks are public', JSON.stringify(ranks) === JSON.stringify([[1, 'Guest'], [2, 'Bob'], [3, 'Alice']]), JSON.stringify(ranks))
+
+    // The push path must not carry them either, for anyone.
+    let nudge = null
+    const { events } = await readStream(k, { timeoutMs: 15000, cookie: alice }, (evts) => {
+      if (!nudge && evts.some((e) => e.name === 'state')) nudge = bid(k, 300, 'Guest')
+      return evts.some((e) => e.name === 'session' && e.data?.session?.currentBid === 300)
+    })
+    await nudge
+    const pushed = events.find((e) => e.name === 'session')
+    check('S16 push carries ranks without amounts', pushed?.data?.leaderboard?.length === 3 && pushed.data.leaderboard.slice(1).every((e) => e.amount === null), JSON.stringify(pushed?.data?.leaderboard))
+    check('S16 push never names 150 or 200', !/"amount":(150|200)\b/.test(JSON.stringify(events.filter((e) => e.name === 'session'))))
+
+    const anonResults = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/results`)
+    const aliceResults = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/results`, { headers: { cookie: alice } })
+    const hostResults = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/results?format=csv`, { headers: { cookie: host } })
+    check('S16 results need an identity -> 401', anonResults.status === 401, String(anonResults.status))
+    check('S16 results refuse non-hosts -> 403', aliceResults.status === 403, String(aliceResults.status))
+    check('S16 host can export', hostResults.status === 200, String(hostResults.status))
+    await stop(k, host)
+  })
+} else {
+  console.log('SKIP  S16 bid privacy (set SESSION_SECRET to run)')
 }
 
 console.log('')

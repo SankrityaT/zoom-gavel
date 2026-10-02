@@ -87,6 +87,29 @@ closing window pushes `ends_at` out (anti-snipe, never backwards). Expired
 rounds close lazily on the next read or bid, so realtime subscribers see
 the terminal row. Ceiling is $1,000,000 in the API and in SQL.
 
+Buy Now. A round may carry an optional Buy Now price (above the opening
+bid, never below the reserve). A bid at or above it is accepted at exactly
+that price and closes the round inside the same locked transaction as any
+other bid, so simultaneous buyers cannot both win: the rest find the round
+closed.
+
+Leaderboard with private bids. Clients never receive the bid ledger. They
+get one leaderboard entry per bidder, ranked, with a bid count. An amount
+is included only for the viewer's own entry (verified identity), for every
+entry when the viewer is the host, and for the leader, whose amount is the
+public current price. Pushes carry ranks only; the panel fills in the
+viewer's own amount, which an unverified bidder's browser remembers for
+itself because the server cannot tell anonymous viewers apart. The limit
+of this is inherent to an open ascending auction: someone watching live
+sees each new current price and who set it.
+
+Results. A trigger writes one `auction_rounds` row whenever a round stops
+being open, whichever path closed it (expiry, host stop, Buy Now, or the
+next round starting over an expired one). `GET /api/session/[key]/results`
+returns them as JSON, or as a CSV with `?format=csv` for collecting payment
+outside the app. Cells that would run as spreadsheet formulas are
+neutralized. On meeting sessions only the host may read results.
+
 Identity. Zoom sends `x-zoom-app-context` on the Home URL request;
 `src/proxy.ts` decrypts it (AES-256-GCM, strict tag length) and issues a
 signed `gavel_ctx` cookie (`SameSite=None; Partitioned`, needed because the
@@ -121,7 +144,7 @@ bids are the host's.
 
 Rate limits live in Postgres (fixed windows via `rate_limit_hit`) so they
 hold across serverless instances: bids 120 per 10s per IP and 10 per 5s per
-bidder per session, round start/stop 30 per minute per IP, init and stream
+bidder per session, round start/stop 60 per minute per IP, init and stream
 connects 120 per minute per IP. Exceeding one returns 429 with
 `Retry-After`. A limiter error fails open.
 
@@ -133,8 +156,9 @@ is live. Stale rate-limit buckets go with them.
 Testing. `BASE_URL=http://127.0.0.1:5173 npm run test:race` runs the
 concurrency suite (bid storms, identical amounts, expiry boundary,
 colliding extensions, host stop vs in-flight bids, validation, rate
-limits, SSE push latency). Add `SESSION_SECRET=<server value>` to also run
-the host-rule and forged-cookie scenarios with minted cookies, and
+limits, SSE push latency, the Buy Now race, results and CSV export). Add
+`SESSION_SECRET=<server value>` to also run the host-rule, forged-cookie,
+and bid-privacy scenarios with minted cookies, and
 `ZOOM_WEBHOOK_SECRET_TOKEN=<server value>` for the webhook-verified host
 scenario. The suite itself counts against the per-IP round limit, so wait
 a minute between back-to-back runs.
@@ -146,7 +170,8 @@ Vercel Production), and `ZOOM_WEBHOOK_SECRET_TOKEN` (the app's event
 subscription Secret Token; the webhook answers 503 without it).
 
 Known gaps, tracked deliberately for later phases: co-hosts cannot run
-rounds, and the leaderboard with private amounts is not built yet.
+rounds, payment is collected outside the app (no checkout), and the host
+queues items one round at a time.
 
 ## Commands
 

@@ -163,9 +163,25 @@
   text-transform: uppercase;
 }
 
+.panel-rung-rank {
+  flex: none;
+  min-width: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.panel-rung-private {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .panel-rung:nth-child(2) { opacity: 0.75; }
 .panel-rung:nth-child(3) { opacity: 0.6; }
 .panel-rung:nth-child(n + 4) { opacity: 0.45; }
+
+.panel-rung.panel-rung--self { opacity: 1; }
 
 .panel-rung--opening {
   color: var(--muted);
@@ -273,6 +289,103 @@
 .panel-secondary-button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.panel-bid-capped {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.panel-buy-now {
+  appearance: none;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--orange);
+  background: transparent;
+  color: var(--orange);
+}
+
+.panel-buy-now--confirm {
+  background: var(--orange);
+  color: #fff;
+}
+
+.panel-buy-now:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.panel-host-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--orange);
+}
+
+.panel-results {
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+  margin: 12px 0 4px;
+}
+
+.panel-results-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.panel-results-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-results-round {
+  flex: none;
+  min-width: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.panel-results-item {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.panel-results-item strong,
+.panel-results-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-results-item span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.panel-results-price {
+  flex: none;
+  font-weight: 600;
+}
+
+.panel-results-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .panel-custom {

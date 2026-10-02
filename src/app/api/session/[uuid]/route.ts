@@ -101,7 +101,13 @@ export async function POST(
         { status: 409 },
       )
     }
-    return NextResponse.json({ accepted: true, extended: outcome.extended, state })
+    return NextResponse.json({
+      accepted: true,
+      extended: outcome.extended,
+      bought: outcome.bought === true,
+      amount: outcome.amount ?? amount,
+      state,
+    })
   } catch (error) {
     return serverError(error)
   }

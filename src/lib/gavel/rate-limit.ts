@@ -8,9 +8,10 @@ import { rateLimitHit } from './server'
 export const LIMITS = {
   bidPerIp: { limit: 120, windowSeconds: 10 },
   bidPerBidder: { limit: 10, windowSeconds: 5 },
-  roundPerIp: { limit: 30, windowSeconds: 60 },
+  roundPerIp: { limit: 60, windowSeconds: 60 },
   initPerIp: { limit: 120, windowSeconds: 60 },
   streamPerIp: { limit: 120, windowSeconds: 60 },
+  resultsPerIp: { limit: 60, windowSeconds: 60 },
   webhookPerIp: { limit: 120, windowSeconds: 60 },
 } as const
 

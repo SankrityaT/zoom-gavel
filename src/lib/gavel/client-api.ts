@@ -1,4 +1,4 @@
-import type { BidReason, RoundReason, SessionState } from './types'
+import type { BidReason, RoundReason, RoundResult as RoundRecord, SessionState } from './types'
 
 // The one place the browser talks to /api/session/[key]. Cookies ride along
 // automatically on same-origin fetches, which is how verified identity
@@ -33,7 +33,7 @@ export async function initSession(
 }
 
 export type BidResult =
-  | { accepted: true; extended: boolean; state: SessionState }
+  | { accepted: true; extended: boolean; bought: boolean; amount: number; state: SessionState }
   | { accepted: false; reason: BidReason; minAmount?: number; state?: SessionState }
 
 export async function postBid(
@@ -51,6 +51,7 @@ export type StartRoundInput = {
   itemName: string
   openingBid: number
   reservePrice: number | null
+  buyNowPrice?: number | null
   seconds: number
   extendWindowSeconds?: number
   extendBySeconds?: number
@@ -82,4 +83,16 @@ export function startRound(sessionKey: string, input: StartRoundInput) {
 
 export function stopRound(sessionKey: string) {
   return roundRequest(sessionKey, { action: 'stop' })
+}
+
+export function resultsUrl(sessionKey: string, format?: 'csv') {
+  return sessionUrl(sessionKey, format ? '/results?format=csv' : '/results')
+}
+
+// Finished rounds; null when this viewer may not see them (not the host).
+export async function fetchResults(sessionKey: string): Promise<RoundRecord[] | null> {
+  const res = await fetch(resultsUrl(sessionKey), { cache: 'no-store' })
+  if (res.status === 401 || res.status === 403 || res.status === 404) return null
+  if (!res.ok) throw new Error(`results read failed (${res.status})`)
+  return ((await res.json()) as { rounds: RoundRecord[] }).rounds
 }

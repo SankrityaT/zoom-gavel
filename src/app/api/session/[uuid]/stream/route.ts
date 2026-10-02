@@ -11,8 +11,9 @@ import { isSessionKey } from '@/lib/gavel/validate'
 // allow-list entry and no CSP change.
 //
 // Protocol: `state` (full viewer-specific snapshot) right after the
-// upstream channel is live, then `session` / `bid` deltas, `: ping`
-// heartbeats, and a clean close before maxDuration. EventSource reconnects
+// upstream channel is live, then `session` deltas (public leaderboard, no
+// private amounts), `: ping` heartbeats, and a clean close before
+// maxDuration. EventSource reconnects
 // by itself and every connection starts with a fresh snapshot, so nothing
 // is lost across the reconnect. `fallback` tells the client to poll.
 

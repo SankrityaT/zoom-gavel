@@ -18,15 +18,35 @@ export type SessionRow = {
   closed_at: string | null
   extend_window_seconds: number
   extend_by_seconds: number
+  buy_now_price?: number | null
+  bought_now?: boolean
 }
 
-export type BidRow = {
-  id: number
-  amount: number
+// One bidder's standing in a round. `amount` is present only in the copy
+// the API server reads; the realtime broadcast omits it.
+export type LeaderRow = {
   bidder_key: string
   bidder_name: string
   verified: boolean
-  created_at: string
+  amount?: number
+  bids: number
+  last_bid_at: string
+}
+
+export type RoundRow = {
+  round_no: number
+  item_name: string
+  opening_bid: number
+  reserve_price: number | null
+  buy_now_price: number | null
+  final_bid: number
+  winner_key: string | null
+  winner_name: string | null
+  winner_verified: boolean | null
+  bid_count: number
+  outcome: 'sold' | 'reserve_not_met' | 'no_bids'
+  bought_now: boolean
+  closed_at: string
 }
 
 // Client-facing shapes (camelCase). host_key never leaves the server raw;
@@ -40,6 +60,8 @@ export type SessionInfo = {
   currentBid: number
   reservePrice: number | null
   reserveMet: boolean
+  buyNowPrice: number | null
+  boughtNow: boolean
   leader: { bidderKey: string; name: string } | null
   endsAt: string | null
   closedAt: string | null
@@ -52,13 +74,31 @@ export type SessionInfo = {
   updatedAt: string
 }
 
-export type Bid = {
-  id: number
-  amount: number
+// Rank is public; `amount` is null unless this viewer may see it (their
+// own entry, the leader's since that is the current price, or everything
+// for the verified host).
+export type LeaderEntry = {
+  rank: number
   bidderKey: string
-  bidderName: string
+  name: string
   verified: boolean
-  createdAt: string
+  bids: number
+  lastBidAt: string
+  amount: number | null
+}
+
+export type RoundResult = {
+  roundNo: number
+  itemName: string
+  openingBid: number
+  reservePrice: number | null
+  buyNowPrice: number | null
+  finalBid: number
+  winner: { bidderKey: string; name: string; verified: boolean } | null
+  bidCount: number
+  outcome: 'sold' | 'reserve_not_met' | 'no_bids'
+  boughtNow: boolean
+  closedAt: string
 }
 
 export type ViewerInfo = {
@@ -71,7 +111,7 @@ export type ViewerInfo = {
 
 export type SessionState = {
   session: SessionInfo
-  bids: Bid[]
+  leaderboard: LeaderEntry[]
   serverNow: string
   viewer: ViewerInfo
 }
@@ -85,6 +125,7 @@ export type BidReason =
   | 'rate_limited'
 export type RoundReason =
   | 'bad_seconds'
+  | 'bad_buy_now'
   | 'unverified'
   | 'not_host'
   | 'round_open'
@@ -112,6 +153,8 @@ export function toSessionInfo(row: SessionRow): SessionInfo {
     reserveMet:
       row.reserve_price === null ||
       (leader !== null && row.current_bid >= row.reserve_price),
+    buyNowPrice: row.buy_now_price ?? null,
+    boughtNow: row.bought_now === true,
     leader,
     endsAt: row.ends_at,
     closedAt: row.closed_at,
@@ -124,13 +167,44 @@ export function toSessionInfo(row: SessionRow): SessionInfo {
   }
 }
 
-export function toBid(row: BidRow): Bid {
-  return {
-    id: row.id,
-    amount: row.amount,
+// `mayReveal` decides per entry whether this viewer gets the amount. The
+// leader's amount is always the public current price.
+export function toLeaderboard(
+  rows: LeaderRow[],
+  currentBid: number,
+  mayReveal: (bidderKey: string) => boolean = () => false,
+): LeaderEntry[] {
+  return rows.map((row, index) => ({
+    rank: index + 1,
     bidderKey: row.bidder_key,
-    bidderName: row.bidder_name,
+    name: row.bidder_name,
     verified: row.verified,
-    createdAt: row.created_at,
+    bids: row.bids,
+    lastBidAt: row.last_bid_at,
+    amount:
+      index === 0
+        ? currentBid
+        : row.amount !== undefined && mayReveal(row.bidder_key)
+          ? row.amount
+          : null,
+  }))
+}
+
+export function toRoundResult(row: RoundRow): RoundResult {
+  return {
+    roundNo: row.round_no,
+    itemName: row.item_name,
+    openingBid: row.opening_bid,
+    reservePrice: row.reserve_price,
+    buyNowPrice: row.buy_now_price,
+    finalBid: row.final_bid,
+    winner:
+      row.winner_key !== null
+        ? { bidderKey: row.winner_key, name: row.winner_name ?? 'Bidder', verified: row.winner_verified === true }
+        : null,
+    bidCount: row.bid_count,
+    outcome: row.outcome,
+    boughtNow: row.bought_now,
+    closedAt: row.closed_at,
   }
 }

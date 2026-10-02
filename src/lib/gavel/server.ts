@@ -1,11 +1,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Viewer } from './auth'
 import {
-  toBid,
+  toLeaderboard,
   toSessionInfo,
   type BidReason,
-  type BidRow,
+  type LeaderRow,
   type RoundReason,
+  type RoundRow,
   type SessionRow,
   type SessionState,
 } from './types'
@@ -34,7 +35,7 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
-type RawState = { session: SessionRow; bids: BidRow[]; server_now: string } | null
+type RawState = { session: SessionRow; leaderboard?: LeaderRow[]; server_now: string } | null
 
 export async function getRawState(uuid: string) {
   return rpc<RawState>('session_state', { p_uuid: uuid })
@@ -51,7 +52,7 @@ export async function ensureSession(uuid: string, itemName: string, openingBid: 
 }
 
 export type BidOutcome =
-  | { ok: true; extended: boolean; bid_id: number; session: SessionRow }
+  | { ok: true; extended: boolean; bought?: boolean; amount?: number; bid_id: number; session: SessionRow }
   | { ok: false; reason: BidReason; min_amount?: number; session?: SessionRow }
 
 export async function placeBid(
@@ -78,6 +79,7 @@ export type StartRoundForm = {
   itemName: string
   openingBid: number
   reservePrice: number | null
+  buyNowPrice: number | null
   seconds: number
   extendWindowSeconds: number
   extendBySeconds: number
@@ -93,6 +95,7 @@ export async function startRound(uuid: string, hostKey: string | null, form: Sta
     p_seconds: form.seconds,
     p_extend_window: form.extendWindowSeconds,
     p_extend_by: form.extendBySeconds,
+    p_buy_now: form.buyNowPrice,
   })
 }
 
@@ -118,9 +121,10 @@ export async function setMeetingHost(uuid: string, hostKey: string) {
   })
 }
 
-// Assembles the client-facing state: camelCase session, ladder, server
-// clock, and what this viewer may do. host_key is consumed here and never
-// sent to the client.
+// Assembles the client-facing state: camelCase session, leaderboard,
+// server clock, and what this viewer may do. host_key is consumed here and
+// never sent to the client. Bid amounts are private: a viewer gets their
+// own (verified identity only) and the verified host gets all of them.
 export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionState {
   const session = toSessionInfo(raw.session)
   const isHost =
@@ -133,7 +137,11 @@ export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionS
     (viewer.verified && viewer.inThisMeeting && (!session.hostClaimed || isHost))
   return {
     session,
-    bids: raw.bids.map(toBid),
+    leaderboard: toLeaderboard(
+      raw.leaderboard ?? [],
+      raw.session.current_bid,
+      (key) => isHost || (viewer.verified && key === viewer.bidderKey),
+    ),
     serverNow: raw.server_now,
     viewer: {
       verified: viewer.verified,
@@ -148,4 +156,18 @@ export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionS
 export async function getState(uuid: string, viewer: Viewer) {
   const raw = await getRawState(uuid)
   return raw ? buildState(raw, viewer) : null
+}
+
+// Finished rounds for a session, oldest first.
+export async function getRounds(uuid: string) {
+  const { data, error } = await getServiceClient()
+    .from('auction_rounds')
+    .select(
+      'round_no, item_name, opening_bid, reserve_price, buy_now_price, final_bid, winner_key, winner_name, winner_verified, bid_count, outcome, bought_now, closed_at',
+    )
+    .eq('session_uuid', uuid)
+    .order('round_no', { ascending: true })
+    .limit(500)
+  if (error) throw new Error(`rounds read failed: ${error.message}`)
+  return (data ?? []) as RoundRow[]
 }
