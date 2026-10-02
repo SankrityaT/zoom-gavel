@@ -4,11 +4,12 @@
 //   BASE_URL=http://127.0.0.1:5173 npm run test:race
 //   BASE_URL=... SESSION_SECRET=<same as the server> npm run test:race   # also runs S11/S12
 //   ... ZOOM_WEBHOOK_SECRET_TOKEN=<same as the server>                    # also runs S14
+//   ... ZOOM_CLIENT_SECRET=<same as the server>                           # also runs S19
 //
 // No dependencies. Uses fresh sandbox keys per scenario; S11/S12 mint valid
 // identity cookies when SESSION_SECRET is provided.
 
-import { createHmac, randomBytes } from 'node:crypto'
+import { createCipheriv, createHash, createHmac, randomBytes } from 'node:crypto'
 
 const BASE_URL = process.env.BASE_URL
 if (!BASE_URL) {
@@ -17,6 +18,7 @@ if (!BASE_URL) {
 }
 const SESSION_SECRET = process.env.SESSION_SECRET ?? null
 const WEBHOOK_TOKEN = process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? null
+const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET ?? null
 
 let failures = 0
 const results = []
@@ -528,6 +530,46 @@ if (SESSION_SECRET) {
   })
 } else {
   console.log('SKIP  S16 bid privacy (set SESSION_SECRET to run)')
+}
+
+if (ZOOM_CLIENT_SECRET) {
+  // A Zoom app-context token, sealed the way the Zoom client seals it:
+  // base64 of [ivLen][iv][aadLen LE16][aad][cipherLen LE32][cipher][tag].
+  const zoomContext = (payload) => {
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', createHash('sha256').update(ZOOM_CLIENT_SECRET).digest(), iv)
+    const sealed = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()])
+    const head = Buffer.alloc(1 + 12 + 2 + 4)
+    head.writeUInt8(12, 0); iv.copy(head, 1); head.writeUInt16LE(0, 13); head.writeUInt32LE(sealed.length, 15)
+    return Buffer.concat([head, sealed, cipher.getAuthTag()]).toString('base64')
+  }
+  const identity = (context) =>
+    fetch(`${BASE_URL}/api/identity`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ context }) })
+
+  await scenario('S19', 'identity from the SDK app-context token', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const token = zoomContext({ typ: 'meeting', uid: 'sdkUser', mid, ts: Date.now(), exp: Date.now() + 120_000 })
+    const ok = await identity(token)
+    const cookie = (ok.headers.get('set-cookie') ?? '').split(';')[0]
+    check('S19 token accepted', ok.status === 200 && cookie.startsWith('gavel_ctx='), String(ok.status))
+    check('S19 cookie is locked down', /HttpOnly/i.test(ok.headers.get('set-cookie') ?? '') && /SameSite=None/i.test(ok.headers.get('set-cookie') ?? ''))
+    const started = await start(k, {}, cookie)
+    check('S19 that identity can run its meeting', started.status === 200 && started.json.state.viewer.verified === true && started.json.state.viewer.isHost === true, JSON.stringify([started.status, started.json?.state?.viewer]))
+    await stop(k, cookie)
+
+    const flipped = Buffer.from(token, 'base64'); flipped[flipped.length - 1] ^= 1
+    const forged = await identity(flipped.toString('base64'))
+    const expired = await identity(zoomContext({ typ: 'meeting', uid: 'sdkUser', mid, ts: Date.now() - 600_000, exp: Date.now() - 1000 }))
+    const empty = await identity('')
+    check('S19 tampered token -> 401, no cookie', forged.status === 401 && !forged.headers.get('set-cookie'), String(forged.status))
+    check('S19 expired token -> 401', expired.status === 401, String(expired.status))
+    check('S19 missing token -> 400', empty.status === 400, String(empty.status))
+    const cross = await fetch(`${BASE_URL}/api/identity`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ context: token }) })
+    check('S19 cross-site post -> 403', cross.status === 403, String(cross.status))
+  })
+} else {
+  console.log('SKIP  S19 SDK identity (set ZOOM_CLIENT_SECRET to run)')
 }
 
 console.log('')

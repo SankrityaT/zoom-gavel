@@ -8,6 +8,7 @@ import { describeError, toSessionKey } from '@/lib/gavel/demo'
 import type { CheckState } from './zoom'
 import {
   configureZoomSdk,
+  establishIdentity,
   startCollaborateMode,
   subscribeToZoomEvents,
   zoomCapabilities,
@@ -16,6 +17,7 @@ import {
 import type { CollaborateEvent } from './zoom'
 
 const FALLBACK_KEY_STORAGE = 'gavel-demo-session'
+const IDENTITY_REFRESH_MS = 30 * 60 * 1000
 
 // Per-browser demo session id: two tabs in one browser share an auction,
 // but strangers on the public site never share a row.
@@ -119,6 +121,14 @@ function App() {
       onRunningContextChange: () => void runSdkCheck({ force: true }),
     })
   }, [check.phase, runSdkCheck])
+
+  // The identity cookie lasts six hours; renew it well inside that so a long
+  // meeting never drifts to unverified.
+  useEffect(() => {
+    if (check.phase !== 'connected') return
+    const id = setInterval(() => void establishIdentity(), IDENTITY_REFRESH_MS)
+    return () => clearInterval(id)
+  }, [check.phase])
 
   const diagnostics = check.phase === 'connected' ? check.data : null
   const context = diagnostics?.config.runningContext ?? 'browser preview'
@@ -286,6 +296,10 @@ function App() {
               <div>
                 <dt>Role</dt>
                 <dd>{diagnostics.user?.role ?? 'Not available'}</dd>
+              </div>
+              <div>
+                <dt>Identity</dt>
+                <dd>{diagnostics.identity}</dd>
               </div>
               <div>
                 <dt>Unsupported</dt>

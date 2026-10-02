@@ -112,9 +112,13 @@ neutralized. On meeting sessions only the host may read results.
 
 Identity. Zoom sends `x-zoom-app-context` on the Home URL request;
 `src/proxy.ts` decrypts it (AES-256-GCM, strict tag length) and issues a
-signed `gavel_ctx` cookie (`SameSite=None; Partitioned`, needed because the
-Zoom web client embeds the app cross-site). API routes trust only that
-cookie. Verified bidders are stored as HMAC keys, never raw Zoom ids, since
+signed `gavel_ctx` cookie. That header proved unreliable in a real meeting
+(the panel loaded several times with no identity), so the panel also asks
+the Zoom client for the same signed token with `zoomSdk.getAppContext()`
+on every open and every 30 minutes, and trades it at `POST /api/identity`
+for the same cookie. The cookie is `SameSite=None; Partitioned`, needed
+because the Zoom web client embeds the app cross-site. API routes trust
+only that cookie. Verified bidders are stored as HMAC keys, never raw Zoom ids, since
 the tables are publicly readable. Join-link and browser users bid as
 `unverified`.
 

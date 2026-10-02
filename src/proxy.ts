@@ -1,62 +1,41 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import {
-  IDENTITY_COOKIE,
-  IDENTITY_MAX_AGE_SECONDS,
-  identityCookieAttributes,
-  signIdentity,
-} from '@/lib/gavel/auth'
-import { describeError } from '@/lib/gavel/demo'
-import { decryptZoomContext } from '@/lib/gavel/zoom-context'
+import { IDENTITY_COOKIE, identityCookieAttributes } from '@/lib/gavel/auth'
+import { issueIdentity } from '@/lib/gavel/identity'
 
-// Zoom attaches x-zoom-app-context only to the Home URL request. This turns
-// that one-time proof of identity into a signed cookie the API routes trust.
-// Never blocks the page: a bad header just means an unverified viewer.
+// Zoom attaches x-zoom-app-context to the Home URL request. This turns that
+// proof of identity into a signed cookie the API routes trust. Never blocks
+// the page: a missing or bad header just means the panel establishes
+// identity itself through /api/identity once the SDK is up.
 
 export const config = {
   matcher: ['/zoom-test'],
 }
 
-let warnedMissingSecrets = false
-
 export async function proxy(request: NextRequest) {
   const header = request.headers.get('x-zoom-app-context')
-  if (!header) return NextResponse.next()
+  if (!header) {
+    // Worth knowing when Zoom's own client loads the page without it.
+    if (/zoom/i.test(request.headers.get('user-agent') ?? '')) {
+      console.info('zoom context: absent on a Zoom client page load')
+    }
+    return NextResponse.next()
+  }
 
   const response = NextResponse.next()
-  const clientSecret = process.env.ZOOM_CLIENT_SECRET
-  const sessionSecret = process.env.SESSION_SECRET
-  if (!clientSecret || !sessionSecret) {
-    if (!warnedMissingSecrets) {
-      console.warn('zoom context ignored: ZOOM_CLIENT_SECRET or SESSION_SECRET unset')
-      warnedMissingSecrets = true
-    }
-    return response
-  }
-
-  try {
-    const context = await decryptZoomContext(header, clientSecret)
-    const now = Date.now()
-    const value = await signIdentity(
-      {
-        v: 1,
-        uid: context.uid,
-        mid: context.mid,
-        iat: now,
-        exp: now + IDENTITY_MAX_AGE_SECONDS * 1000,
-      },
-      sessionSecret,
-    )
-    const secure =
-      request.nextUrl.protocol === 'https:' || process.env.NODE_ENV === 'production'
+  const issued = await issueIdentity(header)
+  if (issued.ok) {
+    const secure = request.nextUrl.protocol === 'https:' || process.env.NODE_ENV === 'production'
     response.cookies.set({
       name: IDENTITY_COOKIE,
-      value,
+      value: issued.cookieValue,
       ...identityCookieAttributes(secure),
     })
-  } catch (error) {
-    console.warn('zoom context rejected:', describeError(error))
+    console.info('zoom context: identity issued from the page-load header')
+  } else if (issued.reason === 'rejected') {
+    console.warn('zoom context rejected:', issued.detail)
     response.cookies.delete(IDENTITY_COOKIE)
+  } else {
+    console.warn('zoom context ignored: ZOOM_CLIENT_SECRET or SESSION_SECRET unset')
   }
-
   return response
 }
