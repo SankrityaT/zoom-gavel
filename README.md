@@ -1,66 +1,132 @@
 # Zoom Gavel
 
-Zoom Gavel is a Next.js Zoom App prototype for native, real-time auction bidding inside a Zoom meeting. The repository contains the marketing site, the in-meeting diagnostic panel at /zoom-test, and the live bid sync backend (Supabase Postgres + Realtime).
+Live auctions inside a Zoom meeting. The host opens Gavel from the Zoom Apps
+panel, puts an item up, and everyone in the meeting bids in real time from a
+side panel, without leaving the call. People outside the host's Zoom account
+join from a browser link and bid the same way.
+
+Built by Sankritya Thakur for the ASU Next Lab x Zoom fellowship
+(Aug 27 to Dec 1, 2026).
+
+- Live site: https://zoomgavel.vercel.app
+- The in-meeting panel: https://zoomgavel.vercel.app/zoom-test
+- Stack: Next.js 16, React 19, Zoom Apps SDK, Supabase Postgres + Realtime, Vercel
+
+## What it does today
+
+For the host:
+
+- **Start a lot the way you would say it.** "Sell a signed poster starting at
+  $100, reserve None, Buy Now $900", pick a round length, start.
+- **Queue multiple items.** Line items up ahead of time and start the next one
+  with a single tap.
+- **Run the clock.** A server-side countdown that extends when a bid lands in
+  the closing seconds, so nobody wins by sniping.
+- **Results and export.** Every finished round is saved. The host sees a
+  running receipt and can download a CSV of winners and prices to collect
+  payment.
+- **Bring people in.** One button invites the whole meeting; a copyable link
+  lets anyone bid from a browser.
+
+For bidders:
+
+- **One-tap bidding** with a quick bid button, plus and minus steps, or a
+  typed amount.
+- **Max bid.** Set the most you would pay and Gavel bids for you in $25 steps,
+  only as far as it takes to stay ahead.
+- **Buy Now.** If the host set a Buy Now price, the first person to take it
+  wins instantly.
+- **Live leaderboard with private bids.** Everyone sees the ranking and the
+  current price; each bidder's own amount is visible only to them and the host.
+- **Alerts and sound cues.** A banner and a sound when you are outbid, when a
+  lot opens, when the clock runs low, and when the item sells. Mute button in
+  the header.
+
+Under the hood:
+
+- **Real time.** Bid to screen in about 160 to 370 ms, measured on production.
+- **Race-safe.** Bids are accepted atomically in Postgres; two people can never
+  both win.
+- **Verified identity.** Zoom tells the server who each person is and who the
+  meeting host is; only the host can run rounds in their meeting.
+- **Tested.** A 133-assertion concurrency and security suite runs against the
+  live site (bid storms, simultaneous Buy Now, forged identity, privacy of bid
+  amounts, max-bid contests, the queue).
+
+## Screenshots
+
+| Host: items queued | Bidder: setting a max | Bidder: max bidding for them |
+|---|---|---|
+| ![Host queue](docs/screenshots/host-queue.png) | ![Set a max bid](docs/screenshots/bidder-set-max.png) | ![Max bid active](docs/screenshots/bidder-max-active.png) |
+
+| Host: sold, next item ready | Bidder: round over | Bidder: waiting for the first lot |
+|---|---|---|
+| ![Sold and next up](docs/screenshots/host-sold-next-up.png) | ![Round over](docs/screenshots/bidder-round-over.png) | ![Waiting](docs/screenshots/bidder-waiting.png) |
+
+## Progress so far
+
+- **Foundations.** Zoom App running inside a meeting, meeting identity, shared
+  session per meeting, marketing site.
+- **Real time in Zoom.** Live updates inside the Zoom client over a
+  server-sent event stream, with automatic fallbacks.
+- **Backend hardening.** Atomic bids, anti-snipe clock, verified host from the
+  Zoom webhook, rate limits, session expiry, the race test suite.
+- **Panel redesign.** Price-tag lot card, receipt-style results, rolling
+  numbers, and a leaderboard whose rows move as the order changes.
+- **Week of Sep 28.** Leaderboard with private bids, Buy Now price, auction
+  results with CSV export.
+- **Week of Oct 5.** Queue multiple items, max bid, outbid alerts and sound
+  cues.
+
+## Status and what is next
+
+- The app is a development app on the Zoom Marketplace. It opens inside
+  meetings hosted by the developer account; everyone else bids from the
+  browser link. Publishing to the Marketplace is what lets anyone add it.
+- Tested end to end in a real Zoom meeting once (Oct 2). The Oct 5 week's
+  features are verified by automated tests and browser runs on the live site,
+  and still need a pass inside a real meeting, sounds especially.
+- Not built yet: payment inside the app (winners pay the host outside it),
+  co-hosts running rounds, verifying browser bidders, Marketplace submission.
 
 ## Local setup
 
-Requirements:
-
-- Node.js 24 or newer
-- npm 11 or newer
-
-Install and start the app:
+Requirements: Node.js 24 or newer, npm 11 or newer.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. A normal browser intentionally shows the SDK as disconnected because `zoomSdk.config()` can only complete inside Zoom's embedded app browser.
+Open `http://127.0.0.1:5173/zoom-test`. In a normal browser the panel runs as
+a sandbox session where anyone can host, which is the easiest way to try it.
+Add `?session=<any-name>` to share one session between several browser
+windows.
 
 ## Test inside Zoom
 
-Zoom Apps cannot use `localhost` as the Home URL. This project uses the named Cloudflare Tunnel at `https://gavel.sankrityat.com`, which forwards to local port `5173`. Start Next.js normally. The named tunnel runs as a user-level background service, but it can also be started manually if needed:
+See `docs/in-meeting-test.md` for the runbook (written before the panel
+redesign, so some on-screen labels it quotes have changed). The Marketplace app is a
+General App with the Zoom App surface:
 
-```bash
-npm run dev
-cloudflared tunnel run boop
-```
+- Home URL: `https://zoomgavel.vercel.app/zoom-test`
+- Scopes: `zoomapp:inmeeting`, `meeting:read:meeting`
+- In-client features: Collaborate Mode, Guest Mode
+- Event subscription: `meeting.started` to `/api/zoom/webhook`
+- Zoom App SDK APIs: `getRunningContext`, `getUserContext`, `getMeetingUUID`,
+  `getAppContext`, `startCollaborate`, `onCollaborateChange`,
+  `onRunningContextChange`
 
-`gavel.sankrityat.com` is permanently included in Next.js `allowedDevOrigins`.
-
-Create a General App with the Zoom App surface, then configure:
-
-- Home URL: `https://gavel.sankrityat.com/`
-- Domain allow list: `gavel.sankrityat.com`
-- Zoom scope: `zoomapp:inmeeting`
-- In-client feature: Collaborate Mode
-- Optional for later guest testing: Guest Mode
-
-Under **Features > Zoom App SDK > Add APIs**, enable exactly the capabilities currently declared by the frontend:
-
-- `getRunningContext`
-- `getUserContext`
-- `getMeetingUUID`
-- `startCollaborate`
-- `onCollaborateChange`
-- `onRunningContextChange`
-
-Use the Marketplace **Local Test** flow to add the app to your Zoom account. Open it inside a live meeting, then verify:
-
-1. The status changes from `browser preview` to a Zoom running context.
-2. SDK config reports connected.
-3. Meeting identity becomes available.
-4. The **Start Collaborate test** button becomes enabled.
-5. Starting Collaborate Mode produces a Collaborate ID in the diagnostic panel.
-
-The Collaborate ID identifies the shared session. It does not synchronize app state. Bid state will live in a backend keyed to that ID in the next phase.
+Add it to your Zoom account with the Marketplace **Local Test** flow, start a
+meeting on that account, and open Gavel from Apps. For local development
+inside Zoom, point the Home URL at a tunnel to port 5173 instead (Zoom does
+not accept `localhost`).
 
 ## The panel
 
 `/zoom-test` is the in-meeting panel: the lot as a price tag, a leaderboard,
-one bid button, and for the host a setup sentence and a receipt of finished
-lots. The SDK diagnostics that used to fill the page are behind
+one bid button with a max-bid control, alerts with sound, and for the host a
+setup sentence, the queue of lots, and a receipt of finished lots. The SDK diagnostics that used to fill the page are behind
 `/zoom-test?debug=1`.
 
 ## Live auction architecture
@@ -77,8 +143,8 @@ Realtime channel per session per server instance, forwards sanitized
 `session` / `bid` deltas after a viewer-specific `state` snapshot, and ends
 each stream at 270s so EventSource reconnects well inside the 300s
 function limit. Any failure drops a rung (realtime to SSE to 1s polling).
-The panel header names the transport in use (`live`, `live stream`, or
-`1s polling`), and the diagnostics block has a transport probe that
+The diagnostics view (`?debug=1`) names the transport in use (`live`,
+`live stream`, or `1s polling`) and has a transport probe that
 reports whether WebSocket, EventSource, and a raw Supabase wss handshake
 work in the current client. Functions are pinned to `pdx1` in
 `vercel.json`, next to the Supabase project in us-west-2: every bid is
@@ -109,6 +175,26 @@ viewer's own amount, which an unverified bidder's browser remembers for
 itself because the server cannot tell anonymous viewers apart. The limit
 of this is inherent to an open ascending auction: someone watching live
 sees each new current price and who set it.
+
+Max bids. A bidder may set a ceiling for the round (`POST
+/api/session/[key]/max`). After every bid or ceiling change the server
+resolves the contest inside the same transaction, the way a live auction
+would: the highest ceiling leads at one $25 step above the runner-up's
+ceiling, never above its own, and a tie stays with whoever led. Automatic
+bids are marked as such in the ledger. A ceiling is private: a verified
+bidder gets their own back from the server, an unverified bidder's browser
+remembers it, and nobody else ever sees one.
+
+Lot queue. The host lines up lots in advance (`/api/session/[key]/queue`,
+up to 30) and starts the next with one call that pops it and opens the
+round atomically. Only the host can read or change the queue; everyone else
+sees just how many lots are waiting and the name of the next one.
+
+Alerts and sound. The panel raises a banner and a sound when the viewer is
+outbid, a lot opens, the clock enters its last stretch (with a tick for each
+of the final five seconds), and the hammer falls. Sounds are synthesized
+with Web Audio, so there is nothing to download and nothing for the Zoom
+client's allow list to block. The mute choice is remembered per browser.
 
 Results. A trigger writes one `auction_rounds` row whenever a round stops
 being open, whichever path closed it (expiry, host stop, Buy Now, or the
@@ -167,7 +253,8 @@ is live. Stale rate-limit buckets go with them.
 Testing. `BASE_URL=http://127.0.0.1:5173 npm run test:race` runs the
 concurrency suite (bid storms, identical amounts, expiry boundary,
 colliding extensions, host stop vs in-flight bids, validation, rate
-limits, SSE push latency, the Buy Now race, results and CSV export). Add
+limits, SSE push latency, the Buy Now race, results and CSV export, max-bid
+contests, the lot queue). Add
 `SESSION_SECRET=<server value>` to also run the host-rule, forged-cookie,
 and bid-privacy scenarios with minted cookies, and
 `ZOOM_WEBHOOK_SECRET_TOKEN=<server value>` for the webhook-verified host
@@ -181,8 +268,8 @@ Vercel Production), and `ZOOM_WEBHOOK_SECRET_TOKEN` (the app's event
 subscription Secret Token; the webhook answers 503 without it).
 
 Known gaps, tracked deliberately for later phases: co-hosts cannot run
-rounds, payment is collected outside the app (no checkout), and the host
-queues items one round at a time.
+rounds, payment is collected outside the app (no checkout), browser bidders
+are unverified, and the app is not yet published on the Zoom Marketplace.
 
 ## Commands
 
