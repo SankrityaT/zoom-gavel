@@ -2,9 +2,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Viewer } from './auth'
 import {
   toLeaderboard,
+  toQueueItem,
   toSessionInfo,
   type BidReason,
   type LeaderRow,
+  type QueueRow,
   type RoundReason,
   type RoundRow,
   type SessionRow,
@@ -35,10 +37,17 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
-type RawState = { session: SessionRow; leaderboard?: LeaderRow[]; server_now: string } | null
+type RawState = {
+  session: SessionRow
+  leaderboard?: LeaderRow[]
+  viewer_max?: number | null
+  server_now: string
+} | null
 
-export async function getRawState(uuid: string) {
-  return rpc<RawState>('session_state', { p_uuid: uuid })
+// viewerKey is passed only for a verified viewer: it is what lets the read
+// return that viewer's own max bid and nobody else's.
+export async function getRawState(uuid: string, viewerKey: string | null = null) {
+  return rpc<RawState>('session_state', { p_uuid: uuid, p_viewer_key: viewerKey })
 }
 
 export async function ensureSession(uuid: string, itemName: string, openingBid: number) {
@@ -149,12 +158,13 @@ export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionS
       isHost,
       canControl,
       inThisMeeting: viewer.inThisMeeting,
+      maxBid: viewer.verified ? (raw.viewer_max ?? null) : null,
     },
   }
 }
 
 export async function getState(uuid: string, viewer: Viewer) {
-  const raw = await getRawState(uuid)
+  const raw = await getRawState(uuid, viewer.verified ? viewer.bidderKey : null)
   return raw ? buildState(raw, viewer) : null
 }
 
@@ -170,4 +180,69 @@ export async function getRounds(uuid: string) {
     .limit(500)
   if (error) throw new Error(`rounds read failed: ${error.message}`)
   return (data ?? []) as RoundRow[]
+}
+
+export type MaxOutcome =
+  | { ok: true; max: number | null; session: SessionRow }
+  | { ok: false; reason: BidReason; min_amount?: number; max_allowed?: number; session?: SessionRow }
+
+export async function setMaxBid(
+  uuid: string,
+  bidderKey: string,
+  bidderName: string,
+  verified: boolean,
+  max: number | null,
+) {
+  return rpc<MaxOutcome>('set_max_bid', {
+    p_uuid: uuid,
+    p_bidder_key: bidderKey,
+    p_bidder_name: bidderName,
+    p_verified: verified,
+    p_max: max,
+  })
+}
+
+type QueueOutcome =
+  | { ok: true; queue: QueueRow[]; session?: SessionRow }
+  | { ok: false; reason: RoundReason; session?: SessionRow }
+
+function withItems(outcome: QueueOutcome) {
+  return outcome.ok ? { ok: true as const, queue: outcome.queue.map(toQueueItem) } : outcome
+}
+
+export async function getQueue(uuid: string) {
+  return (await rpc<QueueRow[]>('queue_list', { p_uuid: uuid })).map(toQueueItem)
+}
+
+export async function queueAdd(
+  uuid: string,
+  hostKey: string | null,
+  item: { itemName: string; openingBid: number; reservePrice: number | null; buyNowPrice: number | null; seconds: number },
+) {
+  return withItems(
+    await rpc<QueueOutcome>('queue_add', {
+      p_uuid: uuid,
+      p_host_key: hostKey,
+      p_item: item.itemName,
+      p_opening: item.openingBid,
+      p_reserve: item.reservePrice,
+      p_buy_now: item.buyNowPrice,
+      p_seconds: item.seconds,
+    }),
+  )
+}
+
+export async function queueRemove(uuid: string, hostKey: string | null, id: number) {
+  return withItems(await rpc<QueueOutcome>('queue_remove', { p_uuid: uuid, p_host_key: hostKey, p_id: id }))
+}
+
+export async function queueStartNext(uuid: string, hostKey: string | null) {
+  return withItems(
+    await rpc<QueueOutcome>('queue_start_next', {
+      p_uuid: uuid,
+      p_host_key: hostKey,
+      p_extend_window: 10,
+      p_extend_by: 15,
+    }),
+  )
 }

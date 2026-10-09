@@ -22,6 +22,10 @@ export const maxDuration = 300
 const STREAM_MS = 270_000
 const HEARTBEAT_MS = 15_000
 const READY_TIMEOUT_MS = 10_000
+// A broadcast sent in the first moments after a channel joins can be lost
+// (seen repeatedly on the first stream after a long idle spell), so every
+// stream follows its opening snapshot with one more shortly after.
+const SETTLE_MS = 1_200
 
 export async function GET(
   request: Request,
@@ -41,12 +45,14 @@ export async function GET(
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false
+      let settle: ReturnType<typeof setTimeout> | undefined
 
       function close() {
         if (closed) return
         closed = true
         clearInterval(heartbeat)
         clearTimeout(deadline)
+        clearTimeout(settle)
         subscription.unsubscribe()
         request.signal.removeEventListener('abort', close)
         try {
@@ -100,6 +106,13 @@ export async function GET(
       // discards whichever copy is older.
       try {
         event('state', await getState(uuid, viewer))
+        settle = setTimeout(() => {
+          void getState(uuid, viewer)
+            .then((state) => event('state', state))
+            .catch(() => {
+              // The client's own periodic resync covers a failed catch-up.
+            })
+        }, SETTLE_MS)
       } catch (error) {
         console.error('stream snapshot failed:', error)
         event('fallback', { reason: 'snapshot failed' })

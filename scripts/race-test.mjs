@@ -356,16 +356,19 @@ await scenario('S15', 'SSE stream pushes bids', async () => {
       bidSentAt = Date.now()
       bidRequest = bid(k, 175, 'streamer')
     }
-    return evts.some((e) => e.name === 'session' && e.data?.session?.currentBid === 175)
+    return evts.some((e) => e.data?.session?.currentBid === 175)
   })
   const r = bidRequest ? await bidRequest : { status: 0 }
   const names = events.map((e) => e.name)
   check('S15 stream 200', status === 200, String(status))
   check('S15 snapshot first', names[0] === 'state' && events[0].data?.session?.uuid === k, names.join(','))
   check('S15 bid accepted', r.status === 200, String(r.status))
-  const pushed = events.find((e) => e.name === 'session' && e.data?.session?.currentBid === 175)
-  check('S15 bid pushed', pushed?.data?.leaderboard?.length === 1 && pushed.data.leaderboard[0].bids === 1, JSON.stringify(pushed?.data?.leaderboard))
-  check('S15 push under 1.5s', pushed && pushed.at - bidSentAt < 1500, pushed ? `${pushed.at - bidSentAt}ms` : 'none')
+  // The bid reaches the stream as a pushed delta, or, when the channel was
+  // cold and dropped it, in the catch-up snapshot the stream sends next.
+  const pushed = events.find((e) => e.data?.session?.currentBid === 175)
+  check('S15 bid reaches the stream', pushed?.data?.leaderboard?.length === 1 && pushed.data.leaderboard[0].bids === 1, JSON.stringify(pushed?.data?.leaderboard))
+  check('S15 within 2.5s', pushed && pushed.at - bidSentAt < 2500, pushed ? `${pushed.at - bidSentAt}ms via ${pushed.name}` : 'none')
+  if (pushed) console.log(`      S15 delivered by ${pushed.name === 'session' ? 'push' : 'catch-up snapshot'} in ${pushed.at - bidSentAt}ms`)
   check('S15 no host_key leak', !JSON.stringify(events).includes('host_key'))
   check('S15 no per-bid events', !events.some((e) => e.name === 'bid'))
   const bad = await fetch(`${BASE_URL}/api/session/${encodeURIComponent('bad key!')}/stream`)
@@ -530,6 +533,128 @@ if (SESSION_SECRET) {
   })
 } else {
   console.log('SKIP  S16 bid privacy (set SESSION_SECRET to run)')
+}
+
+const setMax = (k, amount, name, cookie) =>
+  api(`${encodeURIComponent(k)}/max`, { method: 'POST', body: { amount, bidderId: name }, cookie })
+const queue = (k, body, cookie) => api(`${encodeURIComponent(k)}/queue`, { method: 'POST', body, cookie })
+const leaderOf = (state) => state.session.leader?.name ?? null
+
+await scenario('S20', 'max bids', async () => {
+  const k = key()
+  await init(k)
+  await start(k, { openingBid: 100, seconds: 120 })
+  // With nobody bidding yet, a max bid opens at the opening price.
+  const a = await setMax(k, 500, 'Ana')
+  check('S20a max opens at the opening bid', a.status === 200 && a.json.state.session.currentBid === 100 && leaderOf(a.json.state) === 'Ana', JSON.stringify([a.status, a.json?.state?.session?.currentBid]))
+  // A hand bid is answered at once, one step above it.
+  const b = await bid(k, 150, 'Leo')
+  check('S20b hand bid is countered one step up', b.status === 200 && b.json.state.session.currentBid === 175 && leaderOf(b.json.state) === 'Ana', JSON.stringify([b.json?.state?.session?.currentBid, leaderOf(b.json.state)]))
+  // A lower max loses to the leader's, who pays one step over it.
+  const c = await setMax(k, 400, 'Leo')
+  check('S20c lower max pushes the leader up', c.status === 200 && c.json.state.session.currentBid === 425 && leaderOf(c.json.state) === 'Ana', JSON.stringify([c.json?.state?.session?.currentBid, leaderOf(c.json.state)]))
+  // A higher max takes the lead at one step over the old ceiling.
+  const d = await setMax(k, 600, 'Maya')
+  check('S20d higher max takes the lead', d.status === 200 && d.json.state.session.currentBid === 525 && leaderOf(d.json.state) === 'Maya', JSON.stringify([d.json?.state?.session?.currentBid, leaderOf(d.json.state)]))
+  // A tie goes to whoever already leads, at the shared ceiling.
+  const e = await setMax(k, 600, 'Ana')
+  check('S20e a tie stays with the leader', e.status === 200 && e.json.state.session.currentBid === 600 && leaderOf(e.json.state) === 'Maya', JSON.stringify([e.json?.state?.session?.currentBid, leaderOf(e.json.state)]))
+  const low = await setMax(k, 600, 'Zed')
+  check('S20f a max that cannot lead is refused', low.status === 409 && low.json.reason === 'too_low' && low.json.minAmount === 601, JSON.stringify([low.status, low.json?.reason, low.json?.minAmount]))
+  const seen = await get(k)
+  check('S20g nobody is handed a max', seen.json.viewer.maxBid === null && !JSON.stringify(seen.json).includes('max_amount'))
+  check('S20g hidden amounts stay hidden', seen.json.leaderboard.slice(1).every((x) => x.amount === null))
+
+  // Removing a max stops the auto-bidding.
+  const k2 = key()
+  await init(k2)
+  await start(k2, { openingBid: 100, seconds: 120 })
+  await setMax(k2, 500, 'Ana')
+  const cleared = await setMax(k2, null, 'Ana')
+  const after = await bid(k2, 150, 'Leo')
+  check('S20h a removed max no longer bids', cleared.status === 200 && after.json.state.session.currentBid === 150 && leaderOf(after.json.state) === 'Leo', JSON.stringify([cleared.status, after.json?.state?.session?.currentBid]))
+
+  // A max at the Buy Now price would be a purchase, so it is refused.
+  const k3 = key()
+  await init(k3)
+  await start(k3, { openingBid: 100, buyNowPrice: 300, seconds: 120 })
+  const over = await setMax(k3, 300, 'Ana')
+  check('S20i a max at Buy Now is refused', over.status === 409 && over.json.reason === 'over_buy_now' && over.json.maxAllowed === 299, JSON.stringify([over.status, over.json?.reason, over.json?.maxAllowed]))
+
+  // Ten max bids land at once, in any order: the highest must lead, at one
+  // step over the second highest, whatever order they arrived in.
+  const k4 = key()
+  await init(k4)
+  await start(k4, { openingBid: 100, seconds: 120 })
+  const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => setMax(k4, 200 + 100 * i, `auto-${i}`)))
+  const end = (await get(k4)).json
+  check('S20j every max resolved', rs.every((r) => r.status === 200 || r.json?.reason === 'too_low'), JSON.stringify(histogram(rs)))
+  check('S20j highest max leads', leaderOf(end) === 'auto-9', String(leaderOf(end)))
+  check('S20j price is one step over the runner-up', end.session.currentBid === 1025, String(end.session.currentBid))
+  check('S20j round still open', end.session.status === 'open')
+})
+
+await scenario('S21', 'lot queue', async () => {
+  const k = key()
+  await init(k)
+  const bad = await queue(k, { action: 'add', itemName: 'Bad', openingBid: 100, buyNowPrice: 100, seconds: 60 })
+  check('S21 bad lot refused', bad.status === 400, String(bad.status))
+  await queue(k, { action: 'add', itemName: 'First lot', openingBid: 100, reservePrice: 150, buyNowPrice: 400, seconds: 45 })
+  await queue(k, { action: 'add', itemName: 'Second lot', openingBid: 200, seconds: 60 })
+  const third = await queue(k, { action: 'add', itemName: 'Third lot', openingBid: 300, seconds: 60 })
+  check('S21 three lots queued in order', third.status === 200 && third.json.queue.map((q) => q.itemName).join('|') === 'First lot|Second lot|Third lot', JSON.stringify(third.json?.queue?.map((q) => q.itemName)))
+  check('S21 everyone sees what is next', third.json.state.session.queuedCount === 3 && third.json.state.session.upNext === 'First lot')
+
+  const s1 = await queue(k, { action: 'start' })
+  const lot = s1.json?.state?.session
+  check('S21 next lot starts with its own settings', s1.status === 200 && lot.status === 'open' && lot.itemName === 'First lot' && lot.openingBid === 100 && lot.reservePrice === 150 && lot.buyNowPrice === 400, JSON.stringify([s1.status, lot?.itemName, lot?.buyNowPrice]))
+  check('S21 it left the queue', s1.json.queue.length === 2 && lot.queuedCount === 2 && lot.upNext === 'Second lot')
+  const busy = await queue(k, { action: 'start' })
+  check('S21 cannot start over a live round', busy.status === 409 && busy.json.reason === 'round_open' && busy.json.state.session.queuedCount === 2, JSON.stringify([busy.status, busy.json?.reason]))
+  await stop(k)
+
+  // Two taps at once: one lot starts, none is skipped.
+  const both = await Promise.all([queue(k, { action: 'start' }), queue(k, { action: 'start' })])
+  const h = histogram(both)
+  const now = (await get(k)).json.session
+  check('S21 a double tap starts one lot', h[200] === 1 && h[409] === 1, JSON.stringify(h))
+  check('S21 and skips none', now.itemName === 'Second lot' && now.queuedCount === 1 && now.upNext === 'Third lot', JSON.stringify([now.itemName, now.queuedCount]))
+  await stop(k)
+
+  const list = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/queue`)
+  const items = (await list.json()).queue
+  const gone = await queue(k, { action: 'remove', id: items[0].id })
+  check('S21 a lot can be removed', gone.status === 200 && gone.json.queue.length === 0 && gone.json.state.session.upNext === null)
+  const empty = await queue(k, { action: 'start' })
+  check('S21 empty queue', empty.status === 409 && empty.json.reason === 'queue_empty', JSON.stringify([empty.status, empty.json?.reason]))
+})
+
+if (SESSION_SECRET) {
+  await scenario('S22', 'queue and max bids follow identity', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const host = mintCookie('userHost', mid)
+    const alice = mintCookie('userAlice', mid)
+    const anon = await queue(k, { action: 'add', itemName: 'Lot', openingBid: 100, seconds: 60 })
+    check('S22 queue needs an identity -> 401', anon.status === 401, String(anon.status))
+    const added = await queue(k, { action: 'add', itemName: 'Lot', openingBid: 100, seconds: 60 }, host)
+    check('S22 host queues a lot', added.status === 200 && added.json.queue.length === 1, String(added.status))
+    const intruder = await queue(k, { action: 'start' }, alice)
+    check('S22 a participant cannot start it -> 403', intruder.status === 403, String(intruder.status))
+    const peek = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/queue`, { headers: { cookie: alice } })
+    check('S22 a participant cannot read the queue -> 403', peek.status === 403, String(peek.status))
+    const started = await queue(k, { action: 'start' }, host)
+    check('S22 host starts it', started.status === 200 && started.json.state.session.status === 'open', String(started.status))
+
+    await setMax(k, 400, 'Alice', alice)
+    const mine = (await get(k, alice)).json
+    const theirs = (await get(k, host)).json
+    check('S22 your max comes back to you', mine.viewer.maxBid === 400, String(mine.viewer?.maxBid))
+    check('S22 and to nobody else, the host included', theirs.viewer.maxBid === null && !JSON.stringify(theirs).includes('400'), JSON.stringify(theirs.viewer))
+    await stop(k, host)
+  })
+} else {
+  console.log('SKIP  S22 queue and max identity (set SESSION_SECRET to run)')
 }
 
 if (ZOOM_CLIENT_SECRET) {

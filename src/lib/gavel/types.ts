@@ -20,6 +20,37 @@ export type SessionRow = {
   extend_by_seconds: number
   buy_now_price?: number | null
   bought_now?: boolean
+  queue_count?: number
+  queue_next?: string | null
+}
+
+export type QueueRow = {
+  id: number
+  item_name: string
+  opening_bid: number
+  reserve_price: number | null
+  buy_now_price: number | null
+  seconds: number
+}
+
+export type QueueItem = {
+  id: number
+  itemName: string
+  openingBid: number
+  reservePrice: number | null
+  buyNowPrice: number | null
+  seconds: number
+}
+
+export function toQueueItem(row: QueueRow): QueueItem {
+  return {
+    id: row.id,
+    itemName: row.item_name,
+    openingBid: row.opening_bid,
+    reservePrice: row.reserve_price,
+    buyNowPrice: row.buy_now_price,
+    seconds: row.seconds,
+  }
 }
 
 // One bidder's standing in a round. `amount` is present only in the copy
@@ -62,6 +93,9 @@ export type SessionInfo = {
   reserveMet: boolean
   buyNowPrice: number | null
   boughtNow: boolean
+  /** Lots the host has lined up, and the name of the next one. Public. */
+  queuedCount: number
+  upNext: string | null
   leader: { bidderKey: string; name: string } | null
   endsAt: string | null
   closedAt: string | null
@@ -107,6 +141,9 @@ export type ViewerInfo = {
   isHost: boolean
   canControl: boolean
   inThisMeeting: boolean
+  /** This viewer's own max bid for the round. Verified viewers only; an
+      unverified bidder's browser remembers its own. */
+  maxBid: number | null
 }
 
 export type SessionState = {
@@ -122,10 +159,13 @@ export type BidReason =
   | 'expired'
   | 'too_low'
   | 'over_max'
+  | 'over_buy_now'
   | 'rate_limited'
 export type RoundReason =
   | 'bad_seconds'
   | 'bad_buy_now'
+  | 'queue_full'
+  | 'queue_empty'
   | 'unverified'
   | 'not_host'
   | 'round_open'
@@ -155,6 +195,8 @@ export function toSessionInfo(row: SessionRow): SessionInfo {
       (leader !== null && row.current_bid >= row.reserve_price),
     buyNowPrice: row.buy_now_price ?? null,
     boughtNow: row.bought_now === true,
+    queuedCount: row.queue_count ?? 0,
+    upNext: row.queue_next ?? null,
     leader,
     endsAt: row.ends_at,
     closedAt: row.closed_at,

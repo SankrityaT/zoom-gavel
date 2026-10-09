@@ -6,6 +6,8 @@ import {
   fetchState,
   initSession,
   postBid,
+  postMaxBid,
+  type MaxResult,
   startRound as apiStartRound,
   stopRound as apiStopRound,
   type BidResult,
@@ -42,6 +44,11 @@ export type AuctionSessionHook = {
   /** Timestamp (ms) of the last clock extension, for a transient toast. */
   extendedAt: number | null
   placeBid: (amount: number) => Promise<BidResult>
+  /** This viewer's max bid for the current round, or null. */
+  maxBid: number | null
+  setMaxBid: (amount: number | null) => Promise<MaxResult>
+  /** Takes a state the panel got from another call (the lot queue). */
+  absorb: (state: SessionState) => void
   startRound: (input: StartRoundInput) => Promise<RoundResult>
   stopRound: () => Promise<RoundResult>
   refresh: () => Promise<void>
@@ -52,6 +59,9 @@ const RESYNC_MS = 30_000
 // jittered exponential backoff so a hiccup never pins it to polling.
 const STREAM_RETRY_BASE_MS = 15_000
 const STREAM_RETRY_MAX_MS = 120_000
+// A broadcast sent just after a realtime channel joins can be lost, so a
+// fresh subscription reads the state once more shortly after it opens.
+const SETTLE_MS = 1_200
 
 // This browser's own best bid per session, so an unverified bidder still
 // sees their amount after a reload. The server cannot tell anonymous
@@ -74,6 +84,36 @@ function readOwnBid(sessionKey: string): OwnBid | null {
       : null
   } catch {
     return null
+  }
+}
+
+// An unverified bidder's max bid, remembered the same way and for the same
+// reason: the server will not tell an anonymous viewer what theirs is.
+function maxStorageKey(sessionKey: string) {
+  return `gavel-max:${sessionKey}`
+}
+
+function readOwnMax(sessionKey: string): OwnBid | null {
+  try {
+    const raw = window.sessionStorage.getItem(maxStorageKey(sessionKey))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<OwnBid>
+    return typeof parsed.bidderKey === 'string' &&
+      typeof parsed.roundNo === 'number' &&
+      typeof parsed.amount === 'number'
+      ? { bidderKey: parsed.bidderKey, roundNo: parsed.roundNo, amount: parsed.amount }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function writeOwnMax(sessionKey: string, own: OwnBid | null) {
+  try {
+    if (own) window.sessionStorage.setItem(maxStorageKey(sessionKey), JSON.stringify(own))
+    else window.sessionStorage.removeItem(maxStorageKey(sessionKey))
+  } catch {
+    // Storage blocked: memory still has it.
   }
 }
 
@@ -106,6 +146,9 @@ export function useAuctionSession(
   const [extendedAt, setExtendedAt] = useState<number | null>(null)
   const [transport, setTransport] = useState<Transport | null>(null)
   const [anonKey, setAnonKey] = useState<string | null>(null)
+  const [localMax, setLocalMax] = useState<OwnBid | null>(() =>
+    typeof window === 'undefined' ? null : readOwnMax(sessionKey),
+  )
   const latestUpdatedAt = useRef('')
   const latestState = useRef<SessionState | null>(null)
   const offsetMs = useRef(0)
@@ -192,6 +235,8 @@ export function useAuctionSession(
       setSync({ phase: 'live', state: merged })
       return (
         current.viewer.isHost ||
+        // A new round resets what is private to this viewer (their max bid).
+        session.roundNo !== current.session.roundNo ||
         session.hostClaimed !== current.session.hostClaimed ||
         session.hostVerified !== current.session.hostVerified
       )
@@ -225,6 +270,7 @@ export function useAuctionSession(
     let active = true
     let pollId: ReturnType<typeof setInterval> | null = null
     let resyncId: ReturnType<typeof setInterval> | null = null
+    let settleId: ReturnType<typeof setTimeout> | null = null
     let teardownPush: (() => void) | null = null
 
     const onSession = (session: SessionInfo, leaderboard: LeaderEntry[]) => {
@@ -350,6 +396,10 @@ export function useAuctionSession(
             if (status === 'SUBSCRIBED') {
               setTransport('realtime')
               void loadOrCreate()
+              if (settleId !== null) clearTimeout(settleId)
+              settleId = setTimeout(() => {
+                if (active) void refresh()
+              }, SETTLE_MS)
             }
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') startPushOrPoll()
           })
@@ -370,6 +420,7 @@ export function useAuctionSession(
       active = false
       if (pollId !== null) clearInterval(pollId)
       if (resyncId !== null) clearInterval(resyncId)
+      if (settleId !== null) clearTimeout(settleId)
       if (streamRetryId !== null) clearTimeout(streamRetryId)
       teardownPush?.()
     }
@@ -432,5 +483,48 @@ export function useAuctionSession(
     (sync.phase === 'live' && sync.state.viewer.verified ? sync.state.viewer.bidderKey : null) ??
     anonKey
 
-  return { sync, transport, selfKey, now, extendedAt, placeBid, startRound, stopRound, refresh }
+  const setMaxBid = useCallback(
+    async (amount: number | null) => {
+      const result = await postMaxBid(sessionKey, amount, bidderName)
+      if (result.ok) {
+        const viewer = result.state.viewer
+        const self = (viewer.verified ? viewer.bidderKey : null) ?? anonKeyRef.current
+        const next =
+          result.max !== null && self
+            ? { bidderKey: self, roundNo: result.state.session.roundNo, amount: result.max }
+            : null
+        setLocalMax(next)
+        writeOwnMax(sessionKey, next)
+      }
+      if (result.state) applyState(result.state)
+      return result
+    },
+    [sessionKey, bidderName, applyState],
+  )
+
+  // Verified viewers get their max from the server; everyone else from
+  // this browser, and only for the round and identity that set it.
+  const live = sync.phase === 'live' ? sync.state : null
+  const maxBid = live
+    ? live.viewer.verified
+      ? live.viewer.maxBid
+      : localMax && localMax.roundNo === live.session.roundNo && localMax.bidderKey === selfKey
+        ? localMax.amount
+        : null
+    : null
+
+  return {
+    sync,
+    transport,
+    selfKey,
+    now,
+    extendedAt,
+    placeBid,
+    maxBid,
+    setMaxBid,
+    absorb: applyState,
+    startRound,
+    stopRound,
+    refresh,
+  }
 }

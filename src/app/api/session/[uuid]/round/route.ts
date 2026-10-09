@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
+import { hostKeyFor } from '@/lib/gavel/host'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { getState, startRound, stopRound, type RoundOutcome } from '@/lib/gavel/server'
-import { isSandboxKey } from '@/lib/gavel/types'
 import { boundedInt, boundedString, rejectCrossSite } from '@/lib/gavel/validate'
 
 function badRequest(message: string) {
@@ -32,16 +32,9 @@ export async function POST(
 
   try {
     const viewer = await readViewer(request, uuid)
-    let hostKey: string | null = null
-    if (!isSandboxKey(uuid)) {
-      if (!viewer.verified) {
-        return NextResponse.json({ error: 'zoom identity required' }, { status: 401 })
-      }
-      if (!viewer.inThisMeeting) {
-        return NextResponse.json({ error: 'not in this meeting' }, { status: 403 })
-      }
-      hostKey = viewer.bidderKey
-    }
+    const host = hostKeyFor(uuid, viewer)
+    if ('refusal' in host) return host.refusal
+    const hostKey = host.hostKey
 
     let outcome: RoundOutcome
     if (payload.action === 'start') {

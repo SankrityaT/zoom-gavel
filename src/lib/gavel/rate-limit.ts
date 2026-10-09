@@ -12,6 +12,7 @@ export const LIMITS = {
   initPerIp: { limit: 120, windowSeconds: 60 },
   streamPerIp: { limit: 120, windowSeconds: 60 },
   resultsPerIp: { limit: 60, windowSeconds: 60 },
+  queuePerIp: { limit: 90, windowSeconds: 60 },
   identityPerIp: { limit: 60, windowSeconds: 60 },
   webhookPerIp: { limit: 120, windowSeconds: 60 },
 } as const
