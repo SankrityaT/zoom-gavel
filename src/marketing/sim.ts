@@ -162,6 +162,8 @@ type Options = {
   loopAtMs?: number
   /** Where the round stands before it runs, and under reduced motion. */
   stillAt: number
+  /** A max bid the visitor already holds when the picture is taken. */
+  heldMax?: number
 }
 
 const TICK_MS = 200
@@ -179,12 +181,13 @@ export function useSimAuction({
   loopAfterMs,
   loopAtMs,
   stillAt,
+  heldMax,
 }: Options) {
   // `origin` is the wall-clock ms the round started at; null until it runs.
   const [origin, setOrigin] = useState<number | null>(null)
   const [elapsed, setElapsed] = useState(stillAt)
   const [extra, setExtra] = useState<SimEvent[]>([])
-  const [maxBid, setMaxBidState] = useState<number | null>(null)
+  const [maxBid, setMaxBidState] = useState<number | null>(heldMax ?? null)
   const extraRef = useRef<SimEvent[]>([])
   const maxRef = useRef<number | null>(null)
   const originRef = useRef<number | null>(null)

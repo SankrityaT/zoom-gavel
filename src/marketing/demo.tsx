@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { formatUsd } from '@/lib/gavel/demo'
 import type { SessionState } from '@/lib/gavel/types'
 import { BidDock, Bidders, LotTag, Toast } from '@/panel/AuctionPanel'
+export { Toast }
 import { setCuesSilenced, useCues } from '@/panel/cues'
 import type { AuctionSessionHook } from '@/panel/useAuctionSession'
 import logoMark from './assets/logo.png'
@@ -108,29 +109,37 @@ function PanelHead({ status, tone }: { status: string; tone: string }) {
   )
 }
 
-/** The live round, drawn by the panel's own components. */
+export type PanelPart = 'head' | 'tag' | 'bidders' | 'dock' | 'after'
+const EVERY_PART: PanelPart[] = ['head', 'tag', 'bidders', 'dock', 'after']
+
+/** The live round, drawn by the panel's own components. `show` crops it to the parts a picture is about. */
 export function RoundPanel({
   state,
   auction,
   alerts = false,
+  show = EVERY_PART,
   children,
 }: {
   state: SessionState
   auction: AuctionSessionHook
   /** Show the panel's outbid and sold banners. */
   alerts?: boolean
+  show?: PanelPart[]
   children?: ReactNode
 }) {
   const { session } = state
   const { alert, dismiss } = useCues(alerts ? state : null, auction.selfKey)
+  const has = (part: PanelPart) => show.includes(part)
   return (
     <section className="gv" aria-label="Gavel panel">
-      <PanelHead {...headStatus(state)} />
+      {has('head') && <PanelHead {...headStatus(state)} />}
       {alert && <Toast key={`alert-${alert.id}`} alert={alert} onDismiss={dismiss} />}
-      <LotTag state={state} auction={auction} />
-      <Bidders state={state} selfKey={auction.selfKey} />
-      {session.status === 'open' && <BidDock key={`dock-${session.roundNo}`} state={state} auction={auction} />}
-      {session.status === 'closed' && !state.viewer.isHost && (
+      {has('tag') && <LotTag state={state} auction={auction} />}
+      {has('bidders') && <Bidders state={state} selfKey={auction.selfKey} />}
+      {has('dock') && session.status === 'open' && (
+        <BidDock key={`dock-${session.roundNo}`} state={state} auction={auction} />
+      )}
+      {has('after') && session.status === 'closed' && !state.viewer.isHost && (
         <p className="gv-after">
           {session.leader !== null && session.reserveMet ? 'The host will be in touch about payment. ' : ''}
           Up next: <b>{session.upNext}</b>
@@ -138,6 +147,15 @@ export function RoundPanel({
       )}
       {children}
     </section>
+  )
+}
+
+/** A piece of the panel on its own paper, for a picture: nothing in it can be pressed. */
+export function Crop({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`crop ${className}`} inert>
+      {children}
+    </div>
   )
 }
 
@@ -284,7 +302,7 @@ export function AppSidebar({
           </svg>
         </span>
       </div>
-      <div className="zm-app-body" inert={still} data-lenis-prevent>
+      <div className="zm-app-body" inert={still}>
         {children}
       </div>
     </div>

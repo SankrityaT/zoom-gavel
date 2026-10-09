@@ -4,7 +4,6 @@ import Image from 'next/image'
 import { useRef } from 'react'
 import heroAtmosphere from './assets/hero-atmosphere.png'
 import heroLot from './assets/hero-lot.png'
-import logoMark from './assets/logo.png'
 import {
   AppSidebar,
   DANA,
@@ -182,27 +181,6 @@ export default function Hero() {
         <Image src={heroAtmosphere} alt="" fill sizes="100vw" className="hero-atmosphere-image" />
       </div>
 
-      <header className="navbar">
-        <a className="navbar-brand" href="#top">
-          <Image src={logoMark} alt="" width={34} height={34} className="navbar-logo" />
-          Zoom Gavel
-        </a>
-        <nav className="navbar-links" aria-label="Page">
-          <a className="navbar-link" href="#lot">
-            How a lot goes
-          </a>
-          <a className="navbar-link" href="#paddle">
-            Try bidding
-          </a>
-          <a className="navbar-link" href="https://github.com/SankrityaT/zoom-gavel" target="_blank" rel="noreferrer">
-            GitHub
-          </a>
-        </nav>
-        <a className="navbar-cta" href="/zoom-test">
-          Open the panel
-        </a>
-      </header>
-
       <div className="hero-intro">
         <h1 className="hero-headline">
           The auction never
@@ -212,6 +190,14 @@ export default function Hero() {
         <p className="hero-sub">
           Live bidding inside the Zoom window itself. No second tab, no screen share pretending to be a sale.
         </p>
+        <div className="hero-actions">
+          <a className="button button--ink" href="/zoom-test">
+            Open the panel
+          </a>
+          <a className="button button--quiet" href="#lot">
+            See how a lot goes
+          </a>
+        </div>
       </div>
 
       <ZoomMeeting />

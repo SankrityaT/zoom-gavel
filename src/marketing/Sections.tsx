@@ -1,131 +1,9 @@
 import Image from 'next/image'
 import logoMark from './assets/logo.png'
-import { AppSidebar, HostDeskPanel } from './demo'
-import { PaperTag, Slab } from './paper'
+import { Crop, HostDeskPanel } from './demo'
+import { ChapterHead } from './parts'
 
 const REPO = 'https://github.com/SankrityaT/zoom-gavel'
-
-export function Statement() {
-  return (
-    <section className="statement" aria-label="What Gavel is">
-      <Slab tone="mint" className="statement-slab-a" drift={-22} />
-      <Slab tone="coral" className="statement-slab-b" drift={16} />
-      <PaperTag className="statement-tag" />
-      <i className="cube" style={{ left: '14%', bottom: '18%' }} aria-hidden="true" />
-      <i className="cube" style={{ right: '22%', top: '16%' }} aria-hidden="true" />
-      <div className="wrap">
-        <p className="statement-text" data-rise>
-          Gavel is a Zoom App. It opens in the side panel of the meeting your bidders are already in, with the lot, the
-          price, the clock and <em>one bid button</em> next to the host&apos;s camera.
-        </p>
-        <p className="statement-note" data-rise>
-          Built as an ASU Next Lab and Zoom fellowship project. The code is public.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-// What the server does with one bid, in order.
-const BID_STEPS = ['Tap Bid', 'Bidder verified', 'One bid at a time', 'Clock extended if late', 'On every screen']
-
-export function BidPath() {
-  return (
-    <section className="path" aria-labelledby="path-title">
-      <div className="wrap">
-        <div className="path-head">
-          <h2 id="path-title" className="title title--light" data-lines>
-            <span className="mask">
-              <span className="line">What happens to a bid</span>
-            </span>
-          </h2>
-          <p className="path-figure" data-rise>
-            <span className="path-number">
-              160<span>to</span>370<small>ms</small>
-            </span>
-            <span className="path-caption">
-              from the tap to every other screen, measured on the production deployment inside a meeting.
-            </span>
-          </p>
-        </div>
-
-        <ol className="path-steps" data-rise="group">
-          {BID_STEPS.map((step, index) => (
-            <li key={step}>
-              <span className="path-dot" aria-hidden="true">
-                {index + 1}
-              </span>
-              <h3>{step}</h3>
-            </li>
-          ))}
-        </ol>
-
-        <p className="path-suite" data-rise>
-          Two people bidding the same amount, a bid on the last tick of the clock and two buyers on Buy Now at once
-          are all in the repository&apos;s test suite.
-        </p>
-      </div>
-    </section>
-  )
-}
-
-// Example lots: anything a host can hold up to a camera.
-const LOTS = [
-  { no: 12, item: 'Signed team jersey', price: '40', note: 'Booster club night', swing: -9, tilt: -3, tone: 'cream' },
-  { no: 3, item: 'A week at the lake cabin', price: '300', note: 'Reserve $500', swing: 7, tilt: 2, tone: 'blue' },
-  { no: 27, item: 'Grandfather clock', price: '650', note: 'Buy Now $1,200', swing: -6, tilt: -1.5, tone: 'cream' },
-  { no: 8, item: 'Front-row parking, one year', price: '25', note: 'Staff fundraiser', swing: 10, tilt: 3.5, tone: 'coral' },
-]
-
-export function Lots() {
-  return (
-    <section className="lots" aria-labelledby="lots-title">
-      <div className="wrap">
-        <div className="lots-head">
-          <h2 id="lots-title" className="title" data-lines>
-            <span className="mask">
-              <span className="line">If you can hold it up</span>
-            </span>
-            <span className="mask">
-              <span className="line">to a camera, you can sell it</span>
-            </span>
-          </h2>
-          <p className="lede" data-rise>
-            A school fundraiser, or a club&apos;s annual dinner that moved online and never moved back. The host
-            needs a Zoom meeting and something to sell.
-          </p>
-        </div>
-      </div>
-
-      <div className="lots-line" aria-hidden="true">
-        <svg className="lots-string" viewBox="0 0 1200 60" preserveAspectRatio="none">
-          <path d="M0 8 Q 600 70 1200 8" fill="none" stroke="currentColor" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
-        </svg>
-        <ul className="lots-tags">
-          {LOTS.map((lot) => (
-            <li key={lot.item} style={{ rotate: `${lot.tilt}deg` }} data-swing={lot.swing}>
-              <span className="tag-knot" />
-              <div className={`tag tag--${lot.tone}`}>
-                <span className="tag-hole" />
-                <span className="tag-lot">Lot {lot.no}</span>
-                <span className="tag-item">{lot.item}</span>
-                <span className="tag-price">
-                  <sup>$</sup>
-                  {lot.price}
-                </span>
-                <span className="tag-note">{lot.note}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <p className="visually-hidden">
-        Example lots: a signed team jersey starting at $40, a week at a lake cabin starting at $300, a grandfather
-        clock starting at $650, and a year of front-row parking starting at $25.
-      </p>
-    </section>
-  )
-}
 
 const QUESTIONS = [
   {
@@ -156,48 +34,33 @@ const QUESTIONS = [
 
 export function Questions() {
   return (
-    <section className="questions" aria-labelledby="questions-title">
-      <div className="wrap questions-grid">
-        <h2 id="questions-title" className="title" data-lines>
-          <span className="mask">
-            <span className="line">Questions</span>
-          </span>
-        </h2>
-        <div className="questions-list" data-rise="group">
-          {QUESTIONS.map((item) => (
-            <details key={item.q}>
-              <summary>
-                {item.q}
-                <span aria-hidden="true" />
-              </summary>
-              <p>{item.a}</p>
-            </details>
-          ))}
-        </div>
+    <section id="questions" className="chapter" aria-labelledby="questions-title">
+      <ChapterHead id="questions-title" label="Questions" title="What people ask first." />
+      <div className="questions rise">
+        {QUESTIONS.map((item) => (
+          <details key={item.q}>
+            <summary>
+              {item.q}
+              <span aria-hidden="true" />
+            </summary>
+            <p>{item.a}</p>
+          </details>
+        ))}
       </div>
     </section>
   )
 }
 
-export function Closing() {
+/** The page's ending: the line and the two ways in on a dark panel, with the host's empty first lot rising from
+ *  its bottom edge, then the footer. */
+export function Ending() {
   return (
-    <section className="closing" aria-labelledby="closing-title">
-      <Slab tone="coral" className="closing-slab-a" drift={-18} />
-      <Slab tone="mint" className="closing-slab-b" drift={14} />
-      <div className="wrap closing-grid">
-        <div className="closing-copy">
-          <h2 id="closing-title" className="title title--light" data-lines>
-            <span className="mask">
-              <span className="line">Your first lot</span>
-            </span>
-            <span className="mask">
-              <span className="line">is one sentence away</span>
-            </span>
-          </h2>
-          <p className="lede lede--light" data-rise>
-            Open the panel in a browser to run a sandbox auction now, or read how it is built.
-          </p>
-          <div className="closing-actions" data-rise>
+    <>
+      <div className="wrap">
+        <section className="ending rise" aria-labelledby="ending-title">
+          <h2 id="ending-title">Put your first lot up.</h2>
+          <p>Open the panel in a browser and run a sandbox auction now. No meeting needed.</p>
+          <div className="ending-actions">
             <a className="button button--cream" href="/zoom-test">
               Open the panel
             </a>
@@ -205,36 +68,49 @@ export function Closing() {
               Read the source
             </a>
           </div>
-        </div>
-        <div className="closing-panel" data-rise aria-hidden="true">
-          <AppSidebar still>
-            <HostDeskPanel blank />
-          </AppSidebar>
-        </div>
+          <div className="ending-panel" aria-hidden="true">
+            <Crop>
+              <HostDeskPanel blank />
+            </Crop>
+          </div>
+        </section>
       </div>
 
       <footer className="footer">
-        <div className="wrap footer-row">
-          <span className="footer-brand">
-            <Image src={logoMark} alt="" width={30} height={30} />
-            Zoom Gavel
-          </span>
-          <nav className="footer-links" aria-label="Footer">
-            <a href="#demo">Live demo</a>
+        <div className="wrap footer-grid">
+          <div className="footer-about">
+            <span className="footer-brand">
+              <Image src={logoMark} alt="" width={30} height={30} />
+              Zoom Gavel
+            </span>
+            <p>Live bidding inside a Zoom meeting. An ASU Next Lab and Zoom fellowship project.</p>
+          </div>
+          <div>
+            <h4>Product</h4>
             <a href="#lot">How a lot goes</a>
             <a href="#paddle">Try bidding</a>
+            <a href="#bidders">For bidders</a>
+            <a href="#questions">Questions</a>
+          </div>
+          <div>
+            <h4>Use it</h4>
+            <a href="/zoom-test">Open the panel</a>
             <a href={REPO} target="_blank" rel="noreferrer">
-              GitHub
+              Source on GitHub
             </a>
-          </nav>
-          <span className="footer-note">
-            An ASU Next Lab and Zoom fellowship project by{' '}
+          </div>
+          <div>
+            <h4>Made by</h4>
             <a href="https://www.sankrityat.com" target="_blank" rel="noreferrer">
-              Sankritya
+              Sankritya Thakur
             </a>
-          </span>
+          </div>
+          <div className="footer-legal">
+            <span>&copy; 2026 Zoom Gavel.</span>
+            <span>Every screen is Gavel itself, with made-up bidders and lots.</span>
+          </div>
         </div>
       </footer>
-    </section>
+    </>
   )
 }
