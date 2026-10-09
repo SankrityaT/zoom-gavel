@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   AppSidebar,
   DANA,
@@ -13,7 +13,8 @@ import {
   RoundPanel,
   useOnScreen,
 } from './demo'
-import { DESKTOP, ScrollTrigger, useGSAP } from './motion'
+import { DESKTOP, ScrollTrigger, gsap, useGSAP } from './motion'
+import { PaperTag } from './paper'
 import { SELF, type SimEvent, type SimLot, useSimAuction } from './sim'
 
 // Bidding as it opens: the price climbs and the board reorders.
@@ -96,43 +97,44 @@ function SoldRound({ active }: { active: boolean }) {
   )
 }
 
-const CHAPTERS: { title: string; body: ReactNode }[] = [
+const CHAPTERS: { title: string; tone: string; body: ReactNode }[] = [
   {
     title: 'The host says what is for sale',
+    tone: 'sand',
     body: (
       <>
         A lot is set up as a sentence: the item, where bidding starts, a reserve if there is one, and a Buy Now price
-        if the host wants to offer it. Rounds run 30 seconds, 1 minute, 2 minutes or 5. Start the lot right away, or
-        add it to the queue and run the night in order.
+        if the host wants one. Start it now, or line the night up in the queue.
       </>
     ),
   },
   {
     title: 'Everyone bids from the side panel',
+    tone: 'blue',
     body: (
       <>
-        The price is the largest thing on the screen. One tap bids the next $25, the plus and minus keys go higher,
-        and any amount can be typed. Measured on the production deployment, a bid reached the other screens in 160 to
+        One tap bids the next $25. Measured on the production deployment, a bid reached the other screens in 160 to
         370 milliseconds.
       </>
     ),
   },
   {
     title: 'A late bid adds time',
+    tone: 'coral',
     body: (
       <>
         A bid in the last 10 seconds moves the deadline to 15 seconds after it, so nobody wins by waiting for the
-        final second. The deadline lives on the server and every panel counts down to the same instant. If someone
-        passes you, the panel says so at once.
+        final second. If someone passes you, the panel says so at once.
       </>
     ),
   },
   {
     title: 'The hammer falls',
+    tone: 'mint',
     body: (
       <>
-        When the clock runs out the lot is stamped Sold, or marked not sold if the reserve was never met. The host
-        sees every amount and keeps a receipt of the night, with a CSV to download for collecting payment afterward.
+        The clock stops and the lot is stamped Sold. The host sees every amount and keeps a receipt of the night, with
+        a CSV for collecting payment afterward.
       </>
     ),
   },
@@ -148,25 +150,31 @@ export default function LotStory() {
   )
   const onScreen = useOnScreen(root)
 
+  // On a wide screen the section pins and the scroll position picks the
+  // chapter. On a phone every chapter is laid out in full.
   useGSAP(
     () => {
-      const chapters = Array.from(root.current?.querySelectorAll<HTMLElement>('.story-chapter') ?? [])
-      chapters.forEach((chapter, index) => {
+      const mm = gsap.matchMedia()
+      mm.add(DESKTOP, () => {
         ScrollTrigger.create({
-          trigger: chapter,
-          start: 'top 58%',
-          end: 'bottom 58%',
-          onToggle: (self) => {
-            if (self.isActive) setCurrent(index)
-          },
+          trigger: root.current,
+          start: 'top top',
+          end: 'bottom bottom',
+          onUpdate: (self) => setCurrent(Math.min(CHAPTERS.length - 1, Math.floor(self.progress * CHAPTERS.length))),
         })
       })
     },
     { scope: root },
   )
 
-  // On a wide screen one sidebar stays put and only the current chapter's
-  // round runs. On a phone each chapter carries its own.
+  const jump = useCallback((index: number) => {
+    const el = root.current
+    if (!el || !window.matchMedia(DESKTOP).matches) return
+    const span = el.offsetHeight - window.innerHeight
+    const top = el.getBoundingClientRect().top + window.scrollY
+    window.scrollTo({ top: top + ((index + 0.5) / CHAPTERS.length) * span })
+  }, [])
+
   const runs = (index: number) => onScreen && (!desktop || current === index)
   const panels = [
     <HostDeskPanel key="desk" />,
@@ -177,27 +185,27 @@ export default function LotStory() {
 
   return (
     <section id="lot" className="story" ref={root} aria-labelledby="story-title">
-      <div className="wrap">
-        <h2 id="story-title" className="title" data-lines>
-          <span className="mask">
-            <span className="line">One lot, from the first word</span>
-          </span>
-          <span className="mask">
-            <span className="line">to the hammer</span>
-          </span>
-        </h2>
-
-        <div className="story-grid">
+      <div className="story-pin">
+        <div className="wrap story-grid">
+          <h2 id="story-title" className="title story-heading">
+            One lot, from the first word to the hammer
+          </h2>
           {CHAPTERS.map((chapter, index) => (
             <div key={chapter.title} className="story-row" data-current={current === index}>
               <div className="story-chapter">
-                <span className="story-no" aria-hidden="true">
-                  {index + 1}
-                </span>
-                <h3 className="story-title">{chapter.title}</h3>
-                <p className="story-body">{chapter.body}</p>
+                <h3 className="story-title">
+                  <button type="button" onClick={() => jump(index)} aria-current={current === index ? 'step' : undefined}>
+                    {chapter.title}
+                  </button>
+                </h3>
+                <div className="story-fold">
+                  <p className="story-body">{chapter.body}</p>
+                </div>
               </div>
-              <div className="story-panel">
+              <div className={`story-plate plate plate--${chapter.tone}`}>
+                <PaperTag className="story-plate-tag" />
+                <i className="cube" style={{ left: '9%', bottom: '12%' }} aria-hidden="true" />
+                <i className="cube" style={{ right: '11%', top: '9%' }} aria-hidden="true" />
                 <AppSidebar still>{panels[index]}</AppSidebar>
               </div>
             </div>

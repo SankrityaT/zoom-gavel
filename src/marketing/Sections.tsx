@@ -1,16 +1,22 @@
 import Image from 'next/image'
 import logoMark from './assets/logo.png'
 import { AppSidebar, HostDeskPanel } from './demo'
+import { PaperTag, Slab } from './paper'
 
 const REPO = 'https://github.com/SankrityaT/zoom-gavel'
 
 export function Statement() {
   return (
     <section className="statement" aria-label="What Gavel is">
+      <Slab tone="mint" className="statement-slab-a" drift={-22} />
+      <Slab tone="coral" className="statement-slab-b" drift={16} />
+      <PaperTag className="statement-tag" />
+      <i className="cube" style={{ left: '14%', bottom: '18%' }} aria-hidden="true" />
+      <i className="cube" style={{ right: '22%', top: '16%' }} aria-hidden="true" />
       <div className="wrap">
         <p className="statement-text" data-rise>
-          Gavel is a Zoom App. It opens in the side panel of the meeting your bidders are already in, and puts the
-          lot, the price, the clock and one bid button next to the host&apos;s camera.
+          Gavel is a Zoom App. It opens in the side panel of the meeting your bidders are already in, with the lot, the
+          price, the clock and <em>one bid button</em> next to the host&apos;s camera.
         </p>
         <p className="statement-note" data-rise>
           Built as an ASU Next Lab and Zoom fellowship project. The code is public.
@@ -65,26 +71,10 @@ export function BidPath() {
 
 // Example lots: anything a host can hold up to a camera.
 const LOTS = [
-  { no: 12, item: 'Signed team jersey', price: '40', note: 'Booster club night', swing: -7, tilt: -2.5 },
-  { no: 3, item: 'A week at the lake cabin', price: '300', note: 'Reserve $500', swing: 6, tilt: 2 },
-  { no: 27, item: 'Grandfather clock', price: '650', note: 'Buy Now $1,200', swing: -5, tilt: -1.5 },
-  { no: 8, item: 'Front-row parking, one year', price: '25', note: 'Staff fundraiser', swing: 8, tilt: 3 },
-]
-
-const TODAY = [
-  ['Rounds', 'Opening bid, optional reserve, optional Buy Now, 30 seconds to 5 minutes'],
-  ['Lot queue', 'Line the night up, then start each lot with one tap'],
-  ['Max bids', 'The server bids for a bidder up to their limit'],
-  ['Private amounts', 'Ranks are public, amounts are not'],
-  ['Late-bid extension', 'A bid in the last 10 seconds adds time'],
-  ['Join by link', 'Anyone outside the Zoom client can bid from a browser'],
-  ['Invite all', 'The host opens the panel for the whole meeting'],
-  ['Results', 'A receipt for the host and a CSV of every lot'],
-]
-
-const NOT_YET = [
-  ['Checkout', 'Winners pay outside the app, from the host’s CSV'],
-  ['Co-hosts', 'Only the meeting host can start and stop lots'],
+  { no: 12, item: 'Signed team jersey', price: '40', note: 'Booster club night', swing: -9, tilt: -3, tone: 'cream' },
+  { no: 3, item: 'A week at the lake cabin', price: '300', note: 'Reserve $500', swing: 7, tilt: 2, tone: 'blue' },
+  { no: 27, item: 'Grandfather clock', price: '650', note: 'Buy Now $1,200', swing: -6, tilt: -1.5, tone: 'cream' },
+  { no: 8, item: 'Front-row parking, one year', price: '25', note: 'Staff fundraiser', swing: 10, tilt: 3.5, tone: 'coral' },
 ]
 
 export function Lots() {
@@ -94,10 +84,10 @@ export function Lots() {
         <div className="lots-head">
           <h2 id="lots-title" className="title" data-lines>
             <span className="mask">
-              <span className="line">If you can hold it up to a camera,</span>
+              <span className="line">If you can hold it up</span>
             </span>
             <span className="mask">
-              <span className="line">you can sell it</span>
+              <span className="line">to a camera, you can sell it</span>
             </span>
           </h2>
           <p className="lede" data-rise>
@@ -109,13 +99,13 @@ export function Lots() {
 
       <div className="lots-line" aria-hidden="true">
         <svg className="lots-string" viewBox="0 0 1200 60" preserveAspectRatio="none">
-          <path d="M0 8 Q 600 70 1200 8" fill="none" stroke="currentColor" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+          <path d="M0 8 Q 600 70 1200 8" fill="none" stroke="currentColor" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
         </svg>
         <ul className="lots-tags">
           {LOTS.map((lot) => (
             <li key={lot.item} style={{ rotate: `${lot.tilt}deg` }} data-swing={lot.swing}>
               <span className="tag-knot" />
-              <div className="tag">
+              <div className={`tag tag--${lot.tone}`}>
                 <span className="tag-hole" />
                 <span className="tag-lot">Lot {lot.no}</span>
                 <span className="tag-item">{lot.item}</span>
@@ -133,33 +123,6 @@ export function Lots() {
         Example lots: a signed team jersey starting at $40, a week at a lake cabin starting at $300, a grandfather
         clock starting at $650, and a year of front-row parking starting at $25.
       </p>
-
-      <div className="wrap">
-        <div className="ledger" data-rise>
-          <div>
-            <h3>What it does today</h3>
-            <dl>
-              {TODAY.map(([name, detail]) => (
-                <div key={name}>
-                  <dt>{name}</dt>
-                  <dd>{detail}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          <div>
-            <h3>What it does not do yet</h3>
-            <dl>
-              {NOT_YET.map(([name, detail]) => (
-                <div key={name}>
-                  <dt>{name}</dt>
-                  <dd>{detail}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </div>
-      </div>
     </section>
   )
 }
@@ -219,6 +182,8 @@ export function Questions() {
 export function Closing() {
   return (
     <section className="closing" aria-labelledby="closing-title">
+      <Slab tone="coral" className="closing-slab-a" drift={-18} />
+      <Slab tone="mint" className="closing-slab-b" drift={14} />
       <div className="wrap closing-grid">
         <div className="closing-copy">
           <h2 id="closing-title" className="title title--light" data-lines>

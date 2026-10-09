@@ -49,6 +49,18 @@ export default function ScrollFx() {
           scrollTrigger: { trigger: el, start: 'top 88%', once: true },
         })
       }
+      // Paper slabs drift past at their own pace.
+      for (const el of page.querySelectorAll<HTMLElement>('[data-drift]')) {
+        gsap.fromTo(
+          el,
+          { yPercent: -Number(el.dataset.drift) },
+          {
+            yPercent: Number(el.dataset.drift),
+            ease: 'none',
+            scrollTrigger: { trigger: el.parentElement, start: 'top bottom', end: 'bottom top', scrub: 0.6 },
+          },
+        )
+      }
       // Price tags swing on their strings and settle.
       for (const el of page.querySelectorAll<HTMLElement>('[data-swing]')) {
         const from = Number(el.dataset.swing)

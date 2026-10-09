@@ -1,8 +1,11 @@
 'use client'
 
+import Image from 'next/image'
 import { useRef, useState } from 'react'
 import { formatUsd } from '@/lib/gavel/demo'
 import { AppSidebar, DANA, GLASS_HORSE, MARCUS, PEOPLE, PRIYA, RoundPanel, useOnScreen } from './demo'
+import heroLot from './assets/hero-lot.png'
+import { PaperTag, Slab } from './paper'
 import { type SimRival, useSimAuction } from './sim'
 
 // How far each pretend bidder will go. Bid past the last of them and the
@@ -32,6 +35,14 @@ const NOTES = [
   },
 ]
 
+// Paper squares thrown when the hammer falls: angle, distance, colour.
+const CONFETTI = Array.from({ length: 22 }, (_, index) => ({
+  angle: (index * 137.5) % 360,
+  reach: 120 + ((index * 53) % 150),
+  tone: ['blue', 'coral', 'mint', 'pink', 'grey'][index % 5],
+  turn: ((index * 71) % 300) - 150,
+}))
+
 export default function Paddle() {
   const root = useRef<HTMLElement>(null)
   const onScreen = useOnScreen(root)
@@ -48,32 +59,66 @@ export default function Paddle() {
   })
   const { session } = state
   const closed = session.status === 'closed'
-  const won = closed && session.leader?.bidderKey === auction.selfKey && session.reserveMet
+  const sold = closed && session.leader !== null && session.reserveMet
+  const won = sold && session.leader?.bidderKey === auction.selfKey
 
   return (
     <section id="paddle" className="paddle" ref={root} aria-labelledby="paddle-title">
+      <Slab tone="blue" className="paddle-slab-a" drift={-14} />
+      <Slab tone="pink" className="paddle-slab-b" drift={18} />
       <div className="wrap">
         <div className="paddle-intro">
           <h2 id="paddle-title" className="title" data-lines>
             <span className="mask">
-              <span className="line">Bid on the glass horse</span>
+              <span className="line">Go on, bid on the horse</span>
             </span>
           </h2>
           <p className="lede" data-rise>
-            This is the panel a bidder gets in the meeting, running against three pretend bidders in your browser.
-            Nothing you do here is sent anywhere. Bidding starts at {formatUsd(GLASS_HORSE.openingBid)}.
+            The panel a bidder gets in the meeting, running against three pretend bidders in your browser. Nothing you
+            do here is sent anywhere.
           </p>
         </div>
 
-        <div className="paddle-table">
-          <ul className="paddle-notes" data-rise="group">
-            {NOTES.slice(0, 2).map((note) => (
-              <li key={note.title}>
-                <h3>{note.title}</h3>
-                <p>{note.body}</p>
-              </li>
-            ))}
-          </ul>
+        <div className="paddle-table" data-rise>
+          <figure className="paddle-lot">
+            <div className="paddle-photo">
+              <Image
+                src={heroLot}
+                alt="Lot 1, a cobalt glass horse with a coral fracture, on a stone plinth"
+                fill
+                sizes="(max-width: 960px) 100vw, 640px"
+                className="paddle-photo-image"
+              />
+              {sold && (
+                <span key={session.currentBid} className="paddle-stamp">
+                  Sold
+                </span>
+              )}
+            </div>
+            <PaperTag className="paddle-lot-tag">
+              <span className="ptag-small">Lot 1 · Glass horse</span>
+              <span className="ptag-price">{formatUsd(session.currentBid)}</span>
+              <span className="ptag-small">
+                {sold ? (won ? 'Yours' : `Sold to ${session.leader?.name}`) : closed ? 'Not sold' : 'Current bid'}
+              </span>
+            </PaperTag>
+            {sold && (
+              <span className="paddle-confetti" aria-hidden="true">
+                {CONFETTI.map((piece, index) => (
+                  <i
+                    key={index}
+                    className={`bit bit--${piece.tone}`}
+                    style={{
+                      ['--x' as string]: `${Math.cos((piece.angle * Math.PI) / 180) * piece.reach}px`,
+                      ['--y' as string]: `${Math.sin((piece.angle * Math.PI) / 180) * piece.reach}px`,
+                      ['--turn' as string]: `${piece.turn}deg`,
+                      animationDelay: `${(index % 6) * 30}ms`,
+                    }}
+                  />
+                ))}
+              </span>
+            )}
+          </figure>
 
           <div className="paddle-panel">
             <AppSidebar>
@@ -84,12 +129,12 @@ export default function Paddle() {
                 {closed
                   ? won
                     ? `Yours for ${formatUsd(session.currentBid)}.`
-                    : session.leader && session.reserveMet
-                      ? `${session.leader.name} took it for ${formatUsd(session.currentBid)}.`
+                    : sold
+                      ? `${session.leader?.name} took it for ${formatUsd(session.currentBid)}.`
                       : 'It did not sell this time.'
                   : asHost
-                    ? 'You are looking at what the host sees: every amount.'
-                    : 'You are looking at what a bidder sees.'}
+                    ? 'This is what the host sees: every amount.'
+                    : 'This is what a bidder sees.'}
               </p>
               <div className="paddle-buttons">
                 <button className="chip" type="button" aria-pressed={asHost} onClick={() => setAsHost((on) => !on)}>
@@ -101,16 +146,16 @@ export default function Paddle() {
               </div>
             </div>
           </div>
-
-          <ul className="paddle-notes" data-rise="group">
-            {NOTES.slice(2).map((note) => (
-              <li key={note.title}>
-                <h3>{note.title}</h3>
-                <p>{note.body}</p>
-              </li>
-            ))}
-          </ul>
         </div>
+
+        <ul className="paddle-notes" data-rise="group">
+          {NOTES.map((note) => (
+            <li key={note.title}>
+              <h3>{note.title}</h3>
+              <p>{note.body}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   )
