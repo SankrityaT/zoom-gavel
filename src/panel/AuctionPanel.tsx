@@ -160,7 +160,7 @@ function Header({ auction }: { auction: AuctionSessionHook }) {
 }
 
 // The alert for a moment that must not be missed. Tapping it puts it away.
-function Toast({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
+export function Toast({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
   return (
     <div className="gv-toast-slot" role={alert.tone === 'outbid' ? 'alert' : 'status'}>
       <button className={`gv-toast gv-toast--${alert.tone}`} type="button" onClick={onDismiss}>
@@ -279,7 +279,7 @@ function useRoundClock(auction: AuctionSessionHook, endsAt: string | null, round
 
 // The lot, drawn as a price tag: item, the price, who holds it, and the
 // clock along the tear line.
-function LotTag({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+export function LotTag({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
   const { session } = state
   const isOpen = session.status === 'open'
   const sold = session.status === 'closed' && session.leader !== null && session.reserveMet
@@ -398,7 +398,7 @@ function TagClock({ state, auction }: { state: SessionState; auction: AuctionSes
 // shows only where the server (or this browser's own bid) supplied one. The
 // leader's row is a card; everyone else carries a rank badge. It is one list
 // so a row can glide from one place to another when the order changes.
-function Bidders({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
+export function Bidders({ state, selfKey }: { state: SessionState; selfKey: string | null }) {
   const { leaderboard, session } = state
   const closed = session.status === 'closed'
   const bidCount = leaderboard.reduce((sum, entry) => sum + entry.bids, 0)
@@ -501,7 +501,7 @@ function BidderRow({
   )
 }
 
-function BidDock({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+export function BidDock({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
   const { session } = state
   // A bid at or above the Buy Now price buys the lot, so ordinary bids stop
   // one short of it and the Buy Now control is the only way to that price.

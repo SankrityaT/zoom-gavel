@@ -19,6 +19,13 @@ let context: AudioContext | null = null
 let muted = false
 let mutedLoaded = false
 const muteListeners = new Set<() => void>()
+// The landing page runs the panel as a demo and keeps it quiet, without
+// touching the mute choice a bidder made for real meetings.
+let silenced = false
+
+export function setCuesSilenced(next: boolean) {
+  silenced = next
+}
 
 function loadMuted() {
   if (mutedLoaded) return
@@ -92,7 +99,7 @@ function knock(ctx: AudioContext, at: number) {
 
 export function playCue(sound: CueSound) {
   loadMuted()
-  if (muted || !context || context.state !== 'running') return
+  if (silenced || muted || !context || context.state !== 'running') return
   const ctx = context
   try {
     switch (sound) {

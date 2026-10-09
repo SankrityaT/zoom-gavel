@@ -6,6 +6,8 @@ import { Fraunces, Schibsted_Grotesk, Spline_Sans_Mono } from 'next/font/google'
 const display = Fraunces({
   subsets: ['latin'],
   weight: 'variable',
+  // The panel's Sold stamp is set in the italic.
+  style: ['normal', 'italic'],
   axes: ['SOFT', 'WONK', 'opsz'],
   variable: '--font-display',
   display: 'swap',

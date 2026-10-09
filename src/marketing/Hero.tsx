@@ -1,205 +1,205 @@
 'use client'
 
 import Image from 'next/image'
-import { useEffect, useState, useSyncExternalStore } from 'react'
-import {
-  BID_STEP as BID_INCREMENT,
-  DEMO_OPENING_BID as OPENING_BID,
-  formatUsd,
-} from '@/lib/gavel/demo'
+import { useRef } from 'react'
 import heroAtmosphere from './assets/hero-atmosphere.png'
 import heroLot from './assets/hero-lot.png'
 import logoMark from './assets/logo.png'
+import {
+  AppSidebar,
+  DANA,
+  GLASS_HORSE,
+  HOST_NAME,
+  MARCUS,
+  PEOPLE,
+  PRIYA,
+  RoundPanel,
+  useOnScreen,
+  useQuietCues,
+} from './demo'
+import { type SimEvent, type SimLot, useSimAuction } from './sim'
 
-type BidEvent = { at: number; paddle: string; amount: number }
+// One round of the glass horse, told in 40 seconds: the price climbs past
+// the reserve, a bid in the closing seconds pushes the clock out, and the
+// hammer falls.
+const HERO_LOT: SimLot = { ...GLASS_HORSE, seconds: 30 }
 
-const OPENING_CLOCK = 12
-const EXTEND_TO = 12
-const EXTEND_THRESHOLD = 3
-const SOLD_HOLD = 5
-const RESERVE = 1100
-const RING_LENGTH = 2 * Math.PI * 16
-
-const SCRIPT: BidEvent[] = [
-  { at: 2, paddle: 'Paddle 07', amount: 990 },
-  { at: 4, paddle: 'Paddle 12', amount: 1015 },
-  { at: 7, paddle: 'Paddle 03', amount: 1060 },
-  { at: 9, paddle: 'Paddle 07', amount: 1090 },
-  { at: 11, paddle: 'Paddle 12', amount: 1150 },
-  { at: 14, paddle: 'Paddle 03', amount: 1190 },
-  { at: 16, paddle: 'Paddle 07', amount: 1240 },
+const HERO_SCRIPT: SimEvent[] = [
+  { at: 2000, key: PRIYA.key, amount: 950 },
+  { at: 4500, key: MARCUS.key, amount: 975 },
+  { at: 7000, key: DANA.key, amount: 1025 },
+  { at: 10000, key: PRIYA.key, amount: 1075 },
+  { at: 13000, key: MARCUS.key, amount: 1100 },
+  { at: 16000, key: DANA.key, amount: 1150 },
+  { at: 19000, key: PRIYA.key, amount: 1175 },
+  { at: 25000, key: MARCUS.key, amount: 1240 },
 ]
 
-const STRIP_TILES = [
-  { name: 'Paddle 07', initials: '07' },
-  { name: 'Paddle 12', initials: '12' },
-  { name: 'Paddle 03', initials: '03' },
+const GALLERY = [
+  { name: 'Priya', tint: 'coral' },
+  { name: 'Marcus', tint: 'sky' },
+  { name: 'Dana', tint: 'sage' },
+  { name: 'Theo', tint: 'sand' },
 ] as const
 
-type AuctionState = {
-  price: number
-  clock: number
-  feed: BidEvent[]
-  extended: boolean
-  sold: boolean
-  bidCount: number
+function MicOff() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+      <rect x="6" y="2" width="4" height="7" rx="2" />
+      <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2M2.5 2.5l11 11" />
+    </svg>
+  )
 }
 
-// Every animation frame, precomputed in one pass at module load. The
-// interval just indexes into this array: O(1) per tick, no replays.
-const TIMELINE: AuctionState[] = (() => {
-  const bidsByTick = new Map(SCRIPT.map((b) => [b.at, b]))
-  const frames: AuctionState[] = []
-  let price = OPENING_BID
-  let clock = OPENING_CLOCK
-  let sold = false
-  let bidCount = 0
-  const feed: BidEvent[] = []
-
-  frames.push({ price, clock, feed: [], extended: false, sold: false, bidCount: 0 })
-
-  for (let t = 1; !sold; t++) {
-    clock -= 1
-    let extended = false
-    const bid = bidsByTick.get(t)
-    if (bid) {
-      price = bid.amount
-      bidCount += 1
-      feed.unshift(bid)
-      if (clock <= EXTEND_THRESHOLD) {
-        clock = EXTEND_TO
-        extended = true
-      }
-    }
-    if (clock <= 0) sold = true
-    frames.push({
-      price,
-      clock: Math.max(clock, 0),
-      feed: feed.slice(0, 5),
-      extended,
-      sold,
-      bidCount,
-    })
-  }
-
-  for (let i = 0; i < SOLD_HOLD; i++) frames.push(frames[frames.length - 1])
-  return frames
-})()
-
-const LOOP_LENGTH = TIMELINE.length
-const STATIC_FRAME = 7
-
-function frameAt(tick: number): AuctionState {
-  return TIMELINE[Math.min(tick, TIMELINE.length - 1)]
+function Tool({ label, children, tone, count }: { label: string; children: React.ReactNode; tone?: 'on' | 'share'; count?: number }) {
+  return (
+    <span className={tone ? `zm-tool zm-tool--${tone}` : 'zm-tool'}>
+      <span className="zm-tool-icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          {children}
+        </svg>
+        {count !== undefined && <i>{count}</i>}
+      </span>
+      {label}
+    </span>
+  )
 }
 
-function subscribeToMotionPreference(callback: () => void) {
-  const query = window.matchMedia('(prefers-reduced-motion: reduce)')
-  query.addEventListener('change', callback)
-  return () => query.removeEventListener('change', callback)
-}
+function ZoomMeeting() {
+  const ref = useRef<HTMLDivElement>(null)
+  const onScreen = useOnScreen(ref)
+  const { state, auction } = useSimAuction({
+    lot: HERO_LOT,
+    people: PEOPLE,
+    script: HERO_SCRIPT,
+    active: onScreen,
+    loopAfterMs: 6000,
+    stillAt: 17000,
+  })
 
-function readMotionPreference() {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return (
+    <div id="demo" className="zm" ref={ref}>
+      <p className="visually-hidden">
+        A Zoom meeting with the Gavel app open in the side panel. The host, {HOST_NAME}, shows a cobalt glass horse on
+        camera while three people bid on it. The round is simulated and repeats.
+      </p>
+      <div className="zm-titlebar" aria-hidden="true">
+        <span className="zm-lights">
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="zm-title">Zoom Meeting</span>
+        <span className="zm-view">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+            <rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1" />
+            <rect x="9" y="2.5" width="5.5" height="4.5" rx="1" />
+            <rect x="1.5" y="9" width="5.5" height="4.5" rx="1" />
+            <rect x="9" y="9" width="5.5" height="4.5" rx="1" />
+          </svg>
+          View
+        </span>
+      </div>
+
+      <div className="zm-body">
+        <div className="zm-stage" aria-hidden="true">
+          <div className="zm-strip">
+            {GALLERY.map((person) => (
+              <figure key={person.name} className="zm-tile">
+                <span className={`zm-face zm-face--${person.tint}`}>{person.name.charAt(0)}</span>
+                <figcaption>
+                  <MicOff />
+                  {person.name}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <div className="zm-speaker">
+            <Image
+              src={heroLot}
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 900px) 100vw, 70vw"
+              className="zm-speaker-image"
+            />
+            <span className="zm-speaker-name">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <rect x="6" y="2" width="4" height="7" rx="2" />
+                <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2" />
+              </svg>
+              {HOST_NAME} (Host)
+            </span>
+          </div>
+        </div>
+
+        <AppSidebar still className="zm-app--docked">
+          <RoundPanel state={state} auction={auction} />
+        </AppSidebar>
+      </div>
+
+      <div className="zm-toolbar" aria-hidden="true">
+        <div className="zm-tools">
+          <Tool label="Audio">
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </Tool>
+          <Tool label="Video">
+            <rect x="3" y="6" width="13" height="12" rx="2.5" />
+            <path d="M16 10.5 21 8v8l-5-2.5" />
+          </Tool>
+          <Tool label="Participants" count={GALLERY.length + 1}>
+            <circle cx="9" cy="8" r="3.2" />
+            <circle cx="16.5" cy="9.5" r="2.4" />
+            <path d="M3.5 19a5.5 5.5 0 0 1 11 0M13.5 19a4.5 4.5 0 0 1 7-3.6" />
+          </Tool>
+          <Tool label="Chat">
+            <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+          </Tool>
+          <Tool label="Share" tone="share">
+            <rect x="3" y="4" width="18" height="14" rx="2.5" />
+            <path d="M12 15V8M9 10.5 12 8l3 2.5" />
+          </Tool>
+          <Tool label="Apps" tone="on">
+            <rect x="4" y="4" width="7" height="7" rx="1.8" />
+            <rect x="13" y="4" width="7" height="7" rx="1.8" />
+            <rect x="4" y="13" width="7" height="7" rx="1.8" />
+            <rect x="13" y="13" width="7" height="7" rx="1.8" />
+          </Tool>
+        </div>
+        <span className="zm-end">End</span>
+      </div>
+    </div>
+  )
 }
 
 export default function Hero() {
-  const [tick, setTick] = useState(0)
-  const reducedMotion = useSyncExternalStore(
-    subscribeToMotionPreference,
-    readMotionPreference,
-    () => false,
-  )
-
-  useEffect(() => {
-    if (reducedMotion) return
-
-    let id: ReturnType<typeof setInterval> | null = null
-
-    // Only animate while the tab is actually visible: a backgrounded
-    // landing page should cost nothing.
-    const start = () => {
-      if (id === null) {
-        id = setInterval(() => setTick((t) => (t + 1) % LOOP_LENGTH), 1000)
-      }
-    }
-    const stop = () => {
-      if (id !== null) {
-        clearInterval(id)
-        id = null
-      }
-    }
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') start()
-      else stop()
-    }
-
-    onVisibility()
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      stop()
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [reducedMotion])
-
-  const state = frameAt(reducedMotion ? STATIC_FRAME : tick)
-
-  const clockLow = !state.sold && state.clock <= 4
-  const lastBid = state.feed[0] ?? null
-  // All transient "just happened" affordances are motion: freeze them
-  // entirely under reduced motion rather than comparing a live tick
-  // against a static frame.
-  const biddingPaddle =
-    !reducedMotion && !state.sold && lastBid && tick - lastBid.at < 2
-      ? lastBid.paddle
-      : null
-  const toastBid =
-    !reducedMotion && !state.sold && lastBid && tick - lastBid.at < 3
-      ? lastBid
-      : null
-  const clockRatio = state.sold ? 0 : state.clock / EXTEND_TO
-  const leader = lastBid?.paddle ?? null
-  const nextBid = state.price + BID_INCREMENT
-  const reserveMet = state.price >= RESERVE
+  useQuietCues()
 
   return (
     <section className="hero" aria-label="Zoom Gavel, live bidding inside Zoom meetings">
       <div className="hero-atmosphere" aria-hidden="true">
-        <Image
-          src={heroAtmosphere}
-          alt=""
-          fill
-          sizes="100vw"
-          className="hero-atmosphere-image"
-        />
+        <Image src={heroAtmosphere} alt="" fill sizes="100vw" className="hero-atmosphere-image" />
       </div>
 
       <header className="navbar">
-        <span className="navbar-brand">
-          <Image
-            src={logoMark}
-            alt=""
-            width={34}
-            height={34}
-            className="navbar-logo"
-          />
+        <a className="navbar-brand" href="#top">
+          <Image src={logoMark} alt="" width={34} height={34} className="navbar-logo" />
           Zoom Gavel
-        </span>
+        </a>
         <nav className="navbar-links" aria-label="Page">
-          <a className="navbar-link" href="#demo">
-            Live demo
+          <a className="navbar-link" href="#lot">
+            How a lot goes
           </a>
-          <a
-            className="navbar-link"
-            href="https://github.com/SankrityaT/zoom-gavel"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a className="navbar-link" href="#paddle">
+            Try bidding
+          </a>
+          <a className="navbar-link" href="https://github.com/SankrityaT/zoom-gavel" target="_blank" rel="noreferrer">
             GitHub
           </a>
         </nav>
         <a className="navbar-cta" href="/zoom-test">
-          Open in Zoom
+          Open the panel
         </a>
       </header>
 
@@ -210,211 +210,11 @@ export default function Hero() {
           leaves the meeting.
         </h1>
         <p className="hero-sub">
-          Live bidding inside the Zoom window itself. No second tab, no screen
-          share pretending to be a sale.
+          Live bidding inside the Zoom window itself. No second tab, no screen share pretending to be a sale.
         </p>
       </div>
 
-      <div id="demo" className="zoom-window" aria-label="Simulated Zoom meeting running the Gavel panel">
-        <div className="zoom-titlebar">
-          <span className="zoom-lights" aria-hidden="true">
-            <i /><i /><i />
-          </span>
-          <span className="zoom-title">Zoom Meeting</span>
-          <span className="zoom-rec" aria-hidden="true">
-            <i /> LIVE
-          </span>
-        </div>
-
-        <div className="zoom-body">
-          <div className="zoom-stage">
-            <Image
-              src={heroLot}
-              alt="Lot 001, a cobalt glass horse with a coral fracture, shown on the host camera"
-              fill
-              priority
-              sizes="(max-width: 900px) 100vw, 60vw"
-              className="zoom-stage-image"
-            />
-
-            <div className="zoom-filmstrip" aria-hidden="true">
-              {STRIP_TILES.map((tile) => (
-                <figure
-                  key={tile.name}
-                  className={
-                    tile.name === biddingPaddle
-                      ? 'zoom-tile zoom-tile--bidding'
-                      : 'zoom-tile'
-                  }
-                >
-                  <span className="zoom-avatar">{tile.initials}</span>
-                  {tile.name === biddingPaddle && (
-                    <span className="zoom-bid-chip">BID</span>
-                  )}
-                  <figcaption className="zoom-tile-name">{tile.name}</figcaption>
-                </figure>
-              ))}
-            </div>
-
-            <span className="zoom-stage-name">Maya · Host</span>
-            <span className="zoom-stage-lot" aria-hidden="true">
-              Lot 001
-            </span>
-
-            {toastBid && (
-              <p key={toastBid.at} className="zoom-toast" aria-hidden="true">
-                {toastBid.paddle} bids {formatUsd(toastBid.amount)}
-              </p>
-            )}
-
-            {state.sold && (
-              <div className="zoom-sold-overlay" aria-hidden="true">
-                <span className="zoom-sold-stamp">
-                  Sold · {formatUsd(state.price)}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <aside
-            className={state.sold ? 'gavel-panel gavel-panel--sold' : 'gavel-panel'}
-            aria-label="Gavel auction panel, simulated demo"
-          >
-            <div className="gavel-head">
-              <span className="gavel-brand">
-                <Image
-                  src={logoMark}
-                  alt=""
-                  width={20}
-                  height={20}
-                  className="gavel-brand-logo"
-                />
-                Zoom Gavel
-              </span>
-              <span className="gavel-paddles" aria-hidden="true">
-                {STRIP_TILES.length} paddles in
-              </span>
-            </div>
-
-            <div className="gavel-lot-row">
-              <span className="gavel-lot">Lot 001 · Glass horse</span>
-              {reserveMet ? (
-                <span key="met" className="gavel-reserve gavel-reserve--met">
-                  Reserve met
-                </span>
-              ) : (
-                <span className="gavel-reserve">Reserve {formatUsd(RESERVE)}</span>
-              )}
-            </div>
-
-            <div className="gavel-price-block">
-              <span key={state.price} className="gavel-price">
-                {formatUsd(state.price)}
-              </span>
-              <span className={state.sold ? 'gavel-winner gavel-winner--sold' : 'gavel-winner'}>
-                {state.sold
-                  ? `${leader ?? 'Paddle 07'} wins the lot`
-                  : leader
-                    ? `${leader} is winning`
-                    : 'Opening bid, no paddles yet'}
-              </span>
-            </div>
-
-            <ol className="gavel-ladder">
-              {state.feed.map((bid, index) => (
-                <li
-                  key={bid.at}
-                  className={index === 0 ? 'gavel-rung gavel-rung--leader' : 'gavel-rung'}
-                >
-                  <span className="gavel-rung-dot" aria-hidden="true" />
-                  <span className="gavel-rung-paddle">{bid.paddle}</span>
-                  <span className="gavel-rung-amount">{formatUsd(bid.amount)}</span>
-                </li>
-              ))}
-              <li className="gavel-rung gavel-rung--empty">
-                <span className="gavel-rung-dot" aria-hidden="true" />
-                <span className="gavel-rung-paddle">Opening bid</span>
-                <span className="gavel-rung-amount">{formatUsd(OPENING_BID)}</span>
-              </li>
-            </ol>
-
-            {state.sold ? (
-              <div className="gavel-sold-block" aria-hidden="true">
-                <span className="gavel-sold-word">Sold</span>
-                <span className="gavel-sold-price">{formatUsd(state.price)}</span>
-              </div>
-            ) : (
-              <div className="gavel-action" aria-hidden="true">
-                <span className={clockLow ? 'gavel-ring gavel-ring--low' : 'gavel-ring'}>
-                  <svg viewBox="0 0 40 40" width="46" height="46">
-                    <circle className="gavel-ring-track" cx="20" cy="20" r="16" />
-                    <circle
-                      className="gavel-ring-fill"
-                      cx="20"
-                      cy="20"
-                      r="16"
-                      strokeDasharray={RING_LENGTH}
-                      strokeDashoffset={RING_LENGTH * (1 - clockRatio)}
-                      transform="rotate(-90 20 20)"
-                    />
-                  </svg>
-                  <em>{state.clock}</em>
-                </span>
-                <span className="gavel-bid-button">Bid {formatUsd(nextBid)}</span>
-                <span className="gavel-custom-button">Custom</span>
-              </div>
-            )}
-
-            {state.extended && !state.sold && (
-              <p className="gavel-extend" aria-hidden="true">
-                Late bid, clock extended +{EXTEND_TO}s
-              </p>
-            )}
-          </aside>
-        </div>
-
-        <div className="zoom-toolbar" aria-hidden="true">
-          <span className="zoom-tool">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <rect x="9" y="3" width="6" height="11" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-            </svg>
-            Mute
-          </span>
-          <span className="zoom-tool">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="6" width="13" height="12" rx="2" />
-              <path d="M16 10.5 21 8v8l-5-2.5" />
-            </svg>
-            Video
-          </span>
-          <span className="zoom-tool">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <circle cx="9" cy="8" r="3.2" />
-              <circle cx="16.5" cy="9.5" r="2.4" />
-              <path d="M3.5 19a5.5 5.5 0 0 1 11 0M13.5 19a4.5 4.5 0 0 1 7 -3.6" />
-            </svg>
-            Participants
-          </span>
-          <span className="zoom-tool">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 15V4M8 8l4-4 4 4" />
-              <rect x="4" y="13" width="16" height="7" rx="2" />
-            </svg>
-            Share
-          </span>
-          <span className="zoom-tool zoom-tool--active">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <rect x="4" y="4" width="7" height="7" rx="1.5" />
-              <rect x="13" y="4" width="7" height="7" rx="1.5" />
-              <rect x="4" y="13" width="7" height="7" rx="1.5" />
-              <rect x="13" y="13" width="7" height="7" rx="1.5" />
-            </svg>
-            Apps
-          </span>
-          <span className="zoom-leave">Leave</span>
-        </div>
-      </div>
+      <ZoomMeeting />
     </section>
   )
 }
