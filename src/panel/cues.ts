@@ -155,7 +155,11 @@ export function useMuted() {
     for (const listener of muteListeners) listener()
     if (!muted) {
       unlock()
-      playCue('lead')
+      // Resuming is asynchronous; the confirming sound waits for it.
+      void context
+        ?.resume()
+        .then(() => playCue('lead'))
+        .catch(() => undefined)
     }
   }, [])
   return [value, toggle] as const
@@ -173,11 +177,11 @@ export function useCues(state: SessionState | null, selfKey: string | null) {
   const nextId = useRef(1)
 
   useEffect(() => {
-    window.addEventListener('pointerdown', unlock)
-    window.addEventListener('keydown', unlock)
+    // Touch webviews only count the end of a tap as a gesture.
+    const gestures = ['pointerdown', 'pointerup', 'click', 'touchend', 'keydown']
+    for (const name of gestures) window.addEventListener(name, unlock)
     return () => {
-      window.removeEventListener('pointerdown', unlock)
-      window.removeEventListener('keydown', unlock)
+      for (const name of gestures) window.removeEventListener(name, unlock)
     }
   }, [])
 

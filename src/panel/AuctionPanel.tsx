@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Image from 'next/image'
-import { fetchResults, resultsUrl } from '@/lib/gavel/client-api'
+import {
+  fetchQueue,
+  fetchResults,
+  queueAdd,
+  queueRemove,
+  queueStartNext,
+  resultsUrl,
+  type QueueLot,
+} from '@/lib/gavel/client-api'
 import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
 import { outcomeLabel } from '@/lib/gavel/results'
-import type { LeaderEntry, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
+import type { LeaderEntry, QueueItem, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
 import logo from '@/marketing/assets/logo.png'
+import { playCue, useCues, useMuted, type Alert } from './cues'
 import { RollingNumber, useFlip } from './motion'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
@@ -32,6 +41,9 @@ const ROUND_LENGTHS = [
   { seconds: 120, label: '2 min' },
   { seconds: 300, label: '5 min' },
 ]
+// The last seconds of a round each get a tick.
+const TICK_FROM_SEC = 5
+const QUEUE_READ_RETRIES = 3
 const AVATAR_TINTS = ['coral', 'sage', 'sand', 'sky', 'plum']
 
 // Names are client-chosen even for verified bidders, so every name other
@@ -62,10 +74,12 @@ function clockText(remainingSec: number) {
 export default function AuctionPanel({ sessionKey, bidderName, inZoom, roleHint, onInviteMeeting }: Props) {
   const auction = useAuctionSession(sessionKey, bidderName, inZoom)
   const { sync } = auction
+  const { alert, dismiss } = useCues(sync.phase === 'live' ? sync.state : null, auction.selfKey)
 
   return (
     <section className="gv" aria-label="Live auction">
       <Header auction={auction} />
+      {alert && <Toast key={alert.id} alert={alert} onDismiss={dismiss} />}
       {sync.phase === 'unconfigured' && (
         <p className="gv-note">The auction service is not set up yet.</p>
       )}
@@ -90,6 +104,7 @@ export default function AuctionPanel({ sessionKey, bidderName, inZoom, roleHint,
 
 function Header({ auction }: { auction: AuctionSessionHook }) {
   const state = auction.sync.phase === 'live' ? auction.sync.state : null
+  const [muted, toggleMuted] = useMuted()
   let status = ''
   let tone = ''
   if (state) {
@@ -110,13 +125,49 @@ function Header({ auction }: { auction: AuctionSessionHook }) {
         <Image src={logo} alt="" width={28} height={28} />
         Gavel
       </span>
-      {status && (
-        <span className={tone ? `gv-status gv-status--${tone}` : 'gv-status'}>
-          {tone === 'live' && <i aria-hidden="true" />}
-          {status}
-        </span>
-      )}
+      <span className="gv-head-side">
+        {status && (
+          <span className={tone ? `gv-status gv-status--${tone}` : 'gv-status'}>
+            {tone === 'live' && <i aria-hidden="true" />}
+            {status}
+          </span>
+        )}
+        <button
+          className="gv-mute"
+          type="button"
+          aria-pressed={muted}
+          aria-label={muted ? 'Turn sounds on' : 'Mute sounds'}
+          title={muted ? 'Turn sounds on' : 'Mute sounds'}
+          onClick={toggleMuted}
+        >
+          <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+            <path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor" />
+            {muted ? (
+              <path d="M13 7.5l5 5m0-5l-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            ) : (
+              <path
+                d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              />
+            )}
+          </svg>
+        </button>
+      </span>
     </header>
+  )
+}
+
+// The alert for a moment that must not be missed. Tapping it puts it away.
+function Toast({ alert, onDismiss }: { alert: Alert; onDismiss: () => void }) {
+  return (
+    <div className="gv-toast-slot" role={alert.tone === 'outbid' ? 'alert' : 'status'}>
+      <button className={`gv-toast gv-toast--${alert.tone}`} type="button" onClick={onDismiss}>
+        <strong>{alert.title}</strong>
+        {alert.detail && <span>{alert.detail}</span>}
+      </button>
+    </div>
   )
 }
 
@@ -143,7 +194,7 @@ function LivePanel({
   return (
     <>
       {session.status === 'idle' ? (
-        !canHost && <Waiting hostUnconfirmed={hostUnconfirmed} />
+        !canHost && <Waiting hostUnconfirmed={hostUnconfirmed} upNext={session.upNext} />
       ) : (
         <>
           <LotTag state={state} auction={auction} />
@@ -154,19 +205,24 @@ function LivePanel({
       {/* Keyed by round so an armed Buy Now or a typed amount never carries
           into the next lot. */}
       {isOpen && <BidDock key={session.roundNo} state={state} auction={auction} />}
-      {isOpen && canHost && <EndRound auction={auction} />}
+      {isOpen && canHost && <EndRound auction={auction} upNext={session.upNext} />}
 
       {session.status === 'closed' && !canHost && (
         <p className="gv-after">
-          {session.leader !== null && session.reserveMet
-            ? 'The host will be in touch about payment. The next lot starts when they are ready.'
-            : 'The next lot starts when the host is ready.'}
+          {session.leader !== null && session.reserveMet ? 'The host will be in touch about payment. ' : ''}
+          {session.upNext === null ? (
+            'The next lot starts when the host is ready.'
+          ) : (
+            <>
+              Up next: <b>{session.upNext}</b>
+            </>
+          )}
         </p>
       )}
 
       {!isOpen && canHost && (
         <>
-          <HostSetup key={session.roundNo} state={state} auction={auction} />
+          <HostDesk key={session.roundNo} state={state} auction={auction} sessionKey={sessionKey} />
           <Invite sessionKey={sessionKey} onInviteMeeting={onInviteMeeting} />
         </>
       )}
@@ -175,7 +231,7 @@ function LivePanel({
   )
 }
 
-function Waiting({ hostUnconfirmed }: { hostUnconfirmed: boolean }) {
+function Waiting({ hostUnconfirmed, upNext }: { hostUnconfirmed: boolean; upNext: string | null }) {
   return (
     <div className="gv-waiting">
       <p className="gv-waiting-title">Nothing on the block yet.</p>
@@ -184,6 +240,11 @@ function Waiting({ hostUnconfirmed }: { hostUnconfirmed: boolean }) {
           ? 'Zoom has not confirmed you as the host. Close Gavel and open it again from Apps.'
           : 'The host starts each lot. Bidding opens here the moment they do.'}
       </p>
+      {upNext !== null && !hostUnconfirmed && (
+        <p className="gv-waiting-body">
+          Up first: <b>{upNext}</b>
+        </p>
+      )}
     </div>
   )
 }
@@ -308,6 +369,19 @@ function TagClock({ state, auction }: { state: SessionState; auction: AuctionSes
       void auction.refresh()
     }
   }, [remainingMs, nowMs, auction])
+
+  // A double beep when the clock enters its last stretch, then a tick for
+  // each of the final seconds. Nothing sounds for the second the panel
+  // opens on, or when an extension pushes the clock back up.
+  const lastSec = useRef<number | null>(null)
+  useEffect(() => {
+    if (nowMs === 0) return
+    const before = lastSec.current
+    lastSec.current = remainingSec
+    if (before === null || remainingSec >= before || remainingSec <= 0) return
+    if (remainingSec <= TICK_FROM_SEC) playCue('tick')
+    else if (before > session.extendWindowSeconds && remainingSec <= session.extendWindowSeconds) playCue('low')
+  }, [remainingSec, nowMs, session.extendWindowSeconds])
 
   return (
     <div className={low ? 'gv-clock gv-clock--low' : 'gv-clock'} aria-label={`${remainingSec} seconds left`}>
@@ -449,6 +523,46 @@ function BidDock({ state, auction }: { state: SessionState; auction: AuctionSess
   const [confirmingBuy, setConfirmingBuy] = useState(false)
   const armedAt = useRef(0)
 
+  // The max bid: the most this bidder will pay. The server bids for them.
+  const youLead = auction.selfKey !== null && session.leader?.bidderKey === auction.selfKey
+  const maxBid = auction.maxBid
+  const maxFloor = Math.max(1, youLead ? session.currentBid : minBid)
+  const [settingMax, setSettingMax] = useState(false)
+  const [maxTyped, setMaxTyped] = useState('')
+  const [savingMax, setSavingMax] = useState(false)
+  const maxValue = Number.parseInt(maxTyped.replace(/[^0-9]/g, ''), 10)
+  const maxValid = Number.isInteger(maxValue) && maxValue >= maxFloor && maxValue <= bidCeiling
+  const maxPassed = maxBid !== null && !youLead && session.currentBid >= maxBid
+
+  async function saveMax(value: number | null) {
+    if (savingMax) return
+    setSavingMax(true)
+    setMessage('')
+    try {
+      const result = await auction.setMaxBid(value)
+      if (result.ok) {
+        setSettingMax(false)
+        setMaxTyped('')
+      } else {
+        setMessage(
+          result.reason === 'too_low'
+            ? `Your max has to be at least ${formatUsd(result.minAmount ?? maxFloor)}.`
+            : result.reason === 'over_buy_now'
+              ? `Your max has to stay under the Buy Now price. The most you can set is ${formatUsd(result.maxAllowed ?? bidCeiling)}.`
+              : result.reason === 'expired' || result.reason === 'not_open'
+                ? 'The round closed before your max was set.'
+                : result.reason === 'rate_limited'
+                  ? 'Too many changes at once. Try again in a moment.'
+                  : 'Your max was not saved. Try again.',
+        )
+      }
+    } catch {
+      setMessage('Your max did not reach the auction. Check your connection and try again.')
+    } finally {
+      setSavingMax(false)
+    }
+  }
+
   useEffect(() => {
     if (!confirmingBuy) return
     const id = setTimeout(() => setConfirmingBuy(false), BUY_NOW_CONFIRM_MS)
@@ -465,6 +579,11 @@ function BidDock({ state, auction }: { state: SessionState; auction: AuctionSess
         setDialled(null)
         setTyping(false)
         setTyped('')
+        // The bid landed and was answered at once, usually by a max bid.
+        const after = result.state.session
+        if (after.status === 'open' && auction.selfKey !== null && after.leader?.bidderKey !== auction.selfKey) {
+          setMessage(`You were outbid straight away. The price is now ${formatUsd(after.currentBid)}.`)
+        }
       } else {
         setMessage(
           result.reason === 'too_low'
@@ -550,10 +669,65 @@ function BidDock({ state, auction }: { state: SessionState; auction: AuctionSess
         <p className="gv-dock-note">The next bid reaches the Buy Now price.</p>
       )}
 
+      {settingMax && (
+        <form
+          className="gv-max-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (maxValid) void saveMax(maxValue)
+          }}
+        >
+          <p>
+            What is the most you would pay? Gavel bids for you, {formatUsd(BID_STEP)} at a time, and only as far as it
+            takes to stay ahead.
+          </p>
+          <div className="gv-type">
+            <label className="gv-type-field">
+              <span>$</span>
+              <input
+                inputMode="numeric"
+                autoFocus
+                value={maxTyped}
+                onChange={(event) => setMaxTyped(event.target.value)}
+                placeholder={maxFloor.toLocaleString('en-US')}
+                aria-label="Your max bid in dollars"
+              />
+            </label>
+            <button className="gv-bid" type="submit" disabled={!maxValid || savingMax}>
+              {savingMax ? 'Saving…' : 'Set max'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {maxBid !== null && !settingMax && (
+        <p className={maxPassed ? 'gv-max gv-max--passed' : 'gv-max'}>
+          {maxPassed ? (
+            <>
+              The bidding passed your max of <b>{formatUsd(maxBid)}</b>.
+            </>
+          ) : (
+            <>
+              Your max is <b>{formatUsd(maxBid)}</b>. Gavel is bidding for you.
+            </>
+          )}
+        </p>
+      )}
+
       <div className="gv-dock-links">
         {canBid && (
           <button className="gv-link" type="button" onClick={() => setTyping((on) => !on)}>
             {typing ? 'Use the quick bid' : 'Enter an amount'}
+          </button>
+        )}
+        {canBid && (
+          <button className="gv-link" type="button" onClick={() => setSettingMax((on) => !on)}>
+            {settingMax ? 'Cancel' : maxBid === null ? 'Set a max bid' : maxPassed ? 'Raise my max' : 'Change my max'}
+          </button>
+        )}
+        {maxBid !== null && !settingMax && (
+          <button className="gv-link" type="button" disabled={savingMax} onClick={() => void saveMax(null)}>
+            Remove my max
           </button>
         )}
         {buyNow !== null && (
@@ -586,7 +760,7 @@ function BidDock({ state, auction }: { state: SessionState; auction: AuctionSess
   )
 }
 
-function EndRound({ auction }: { auction: AuctionSessionHook }) {
+function EndRound({ auction, upNext }: { auction: AuctionSessionHook; upNext: string | null }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   async function stop() {
@@ -605,6 +779,11 @@ function EndRound({ auction }: { auction: AuctionSessionHook }) {
       <button className="gv-link" type="button" disabled={busy} onClick={() => void stop()}>
         {busy ? 'Ending…' : 'End this round now'}
       </button>
+      {upNext !== null && (
+        <p className="gv-end-next">
+          Up next: <b>{upNext}</b>
+        </p>
+      )}
       {message && (
         <p className="gv-message" role="alert">
           {message}
@@ -653,8 +832,169 @@ function Slot({
   )
 }
 
+function lengthLabel(seconds: number) {
+  return ROUND_LENGTHS.find((option) => option.seconds === seconds)?.label ?? `${seconds} sec`
+}
+
+function hostRefusal(status: number) {
+  if (status === 401) return 'Zoom has not confirmed who you are. Close Gavel and open it again from Apps.'
+  if (status === 403) return 'Only the meeting host can do that.'
+  if (status === 429) return 'Too many requests. Try again in a moment.'
+  return null
+}
+
+// The host's side of the table between rounds: the lots lined up, and the
+// form that starts one now or adds it to the line.
+function HostDesk({
+  state,
+  auction,
+  sessionKey,
+}: {
+  state: SessionState
+  auction: AuctionSessionHook
+  sessionKey: string
+}) {
+  const { session } = state
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    let retry: ReturnType<typeof setTimeout> | undefined
+    fetchQueue(sessionKey)
+      .then((next) => {
+        if (active && next) setQueue(next)
+      })
+      .catch(() => {
+        // Without the list the host has no way to start the next lot.
+        if (active && attempt < QUEUE_READ_RETRIES) retry = setTimeout(() => setAttempt((n) => n + 1), 1500)
+      })
+    return () => {
+      active = false
+      clearTimeout(retry)
+    }
+  }, [sessionKey, session.queuedCount, session.upNext, attempt])
+
+  // One queue request at a time, so the list always shows the latest answer.
+  async function run(request: () => ReturnType<typeof queueAdd>, fallback: string) {
+    if (busy) return 'Still working on the last change. Try again in a moment.'
+    setBusy(true)
+    setMessage('')
+    try {
+      const result = await request()
+      if (result.state) auction.absorb(result.state)
+      if (result.ok) {
+        setQueue(result.queue)
+        return null
+      }
+      return (
+        hostRefusal(result.status) ??
+        (result.reason === 'queue_full'
+          ? 'The queue is full. Start or remove a lot first.'
+          : result.reason === 'round_open'
+            ? 'A round is already running.'
+            : result.reason === 'queue_empty'
+              ? 'There is nothing left in the queue.'
+              : fallback)
+      )
+    } catch {
+      return fallback
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function startNext() {
+    if (busy) return
+    const error = await run(() => queueStartNext(sessionKey), 'Could not start the next lot. Try again.')
+    if (error) setMessage(error)
+  }
+
+  async function remove(id: number) {
+    if (busy) return
+    const error = await run(() => queueRemove(sessionKey, id), 'Could not remove that lot. Try again.')
+    if (error) setMessage(error)
+  }
+
+  return (
+    <>
+      {queue.length > 0 && (
+        <div className="gv-queue">
+          <div className="gv-sect">
+            <h3>Up next</h3>
+            <span>
+              {queue.length} {queue.length === 1 ? 'lot' : 'lots'} lined up
+            </span>
+          </div>
+          <ol className="gv-queue-list">
+            {queue.map((lot, index) => (
+              <li key={lot.id}>
+                <span className="gv-queue-no" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span className="gv-name">
+                  <strong>{lot.itemName}</strong>
+                  <span>
+                    {[
+                      `Starts at ${formatUsd(lot.openingBid)}`,
+                      lot.reservePrice !== null ? `Reserve ${formatUsd(lot.reservePrice)}` : null,
+                      lot.buyNowPrice !== null ? `Buy Now ${formatUsd(lot.buyNowPrice)}` : null,
+                      lengthLabel(lot.seconds),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </span>
+                <button
+                  className="gv-queue-remove"
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Remove ${lot.itemName} from the queue`}
+                  onClick={() => void remove(lot.id)}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ol>
+          <button className="gv-start" type="button" disabled={busy} onClick={() => void startNext()}>
+            {busy ? 'Working…' : `Start ${queue[0].itemName}`}
+          </button>
+          {message && (
+            <p className="gv-message" role="alert">
+              {message}
+            </p>
+          )}
+        </div>
+      )}
+      <HostSetup
+        state={state}
+        auction={auction}
+        queued={queue.length}
+        queueBusy={busy}
+        onQueue={(lot) => run(() => queueAdd(sessionKey, lot), 'Could not add the lot. Try again.')}
+      />
+    </>
+  )
+}
+
 // The host sets a lot up the way they would say it out loud.
-function HostSetup({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
+function HostSetup({
+  state,
+  auction,
+  queued,
+  queueBusy,
+  onQueue,
+}: {
+  state: SessionState
+  auction: AuctionSessionHook
+  queued: number
+  queueBusy: boolean
+  /** Adds the lot to the queue; resolves to an error message, or null. */
+  onQueue: (lot: QueueLot) => Promise<string | null>
+}) {
   const { session } = state
   const first = session.roundNo === 0
   const [itemName, setItemName] = useState('')
@@ -710,15 +1050,41 @@ function HostSetup({ state, auction }: { state: SessionState; auction: AuctionSe
     }
   }
 
+  async function addToQueue() {
+    if (!ready || busy || queueBusy) return
+    setBusy(true)
+    setMessage('')
+    const error = await onQueue({
+      itemName: itemName.trim(),
+      openingBid: openingValue,
+      reservePrice: reserveValue,
+      buyNowPrice: buyNowValue,
+      seconds,
+    })
+    if (error) {
+      setMessage(error)
+    } else {
+      // Ready for the next one; the round length usually stays the same.
+      setItemName('')
+      setOpening('')
+      setReserve('')
+      setBuyNow('')
+    }
+    setBusy(false)
+  }
+
   return (
     <form
       className="gv-setup"
       onSubmit={(event) => {
         event.preventDefault()
-        void start()
+        // Return does what the heading says: with lots lined up, it adds.
+        void (queued > 0 ? addToQueue() : start())
       }}
     >
-      <p className="gv-setup-kicker">{first ? 'Your first lot' : `Lot ${session.roundNo + 1}`}</p>
+      <p className="gv-setup-kicker">
+        {queued > 0 ? 'Add another lot' : first ? 'Your first lot' : `Lot ${session.roundNo + 1}`}
+      </p>
       {/* Each field travels with its punctuation, so a comma never starts a line. */}
       <p className="gv-sentence">
         Sell <Slot value={itemName} onChange={setItemName} placeholder="an item" label="Item name" /> starting at{' '}
@@ -749,9 +1115,24 @@ function HostSetup({ state, auction }: { state: SessionState; auction: AuctionSe
         ))}
       </div>
       {hint && <p className="gv-message">{hint}</p>}
-      <button className="gv-start" type="submit" disabled={!ready || busy}>
-        {busy ? 'Starting…' : 'Start bidding'}
-      </button>
+      <div className="gv-setup-actions">
+        <button
+          className="gv-start gv-start--quiet"
+          type={queued > 0 ? 'submit' : 'button'}
+          disabled={!ready || busy || queueBusy}
+          onClick={queued > 0 ? undefined : () => void addToQueue()}
+        >
+          Add to queue
+        </button>
+        <button
+          className="gv-start"
+          type={queued > 0 ? 'button' : 'submit'}
+          disabled={!ready || busy}
+          onClick={queued > 0 ? () => void start() : undefined}
+        >
+          {busy ? 'Working…' : queued > 0 ? 'Start this now' : 'Start bidding'}
+        </button>
+      </div>
       {message && (
         <p className="gv-message" role="alert">
           {message}

@@ -230,7 +230,10 @@ export function useAuctionSession(
       if (session.updatedAt <= latestUpdatedAt.current) return false
       latestUpdatedAt.current = session.updatedAt
       noteExtension(session.endsAt, session.status)
-      const merged = reveal({ ...current, session, leaderboard }, current)
+      // A max bid belongs to one round; never show it against the next.
+      const viewer =
+        session.roundNo === current.session.roundNo ? current.viewer : { ...current.viewer, maxBid: null }
+      const merged = reveal({ ...current, viewer, session, leaderboard }, current)
       latestState.current = merged
       setSync({ phase: 'live', state: merged })
       return (
@@ -456,6 +459,14 @@ export function useAuctionSession(
         if (self) {
           ownBid.current = { bidderKey: self, roundNo: result.state.session.roundNo, amount: result.amount }
           writeOwnBid(sessionKey, ownBid.current)
+          // A hand bid above the max raises the max to match on the server.
+          const roundNo = result.state.session.roundNo
+          setLocalMax((held) => {
+            if (!held || held.bidderKey !== self || held.roundNo !== roundNo || held.amount >= result.amount) return held
+            const raised = { ...held, amount: result.amount }
+            writeOwnMax(sessionKey, raised)
+            return raised
+          })
         }
       }
       if (result.state) applyState(result.state)

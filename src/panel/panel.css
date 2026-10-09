@@ -983,7 +983,206 @@
   text-underline-offset: 3px;
 }
 
+/* ---- sound toggle and alerts ---- */
+.gv-head-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gv-mute {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.gv-mute[aria-pressed='true'] {
+  color: var(--ink-3);
+}
+
+/* Sticky but zero-height, so an alert floats over the panel and never
+   moves the bid button out from under a thumb. */
+.gv-toast-slot {
+  position: sticky;
+  top: 6px;
+  z-index: 6;
+  height: 0;
+}
+
+.gv-toast {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--ink);
+  color: var(--paper);
+  text-align: left;
+  box-shadow: 0 12px 26px rgba(72, 52, 30, 0.22);
+  animation: gv-toast-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.gv-toast strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.gv-toast span {
+  display: block;
+  margin-top: 1px;
+  font-size: 14px;
+  opacity: 0.86;
+  overflow-wrap: anywhere;
+}
+
+.gv-toast--outbid {
+  background: var(--coral);
+  color: #fff;
+}
+
+.gv-toast--good {
+  background: var(--green);
+  color: #fff;
+}
+
+@keyframes gv-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+}
+
+/* ---- max bid ---- */
+.gv-max-form {
+  margin-top: 14px;
+}
+
+.gv-max-form p {
+  margin: 0 2px 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.gv-max {
+  margin: 13px 2px 0;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: var(--blue-wash);
+  color: var(--blue);
+  font-size: 14px;
+  text-align: center;
+}
+
+.gv-max--passed {
+  background: var(--coral-wash);
+  color: var(--coral);
+}
+
+.gv-link:disabled {
+  opacity: 0.5;
+}
+
+/* ---- lot queue ---- */
+.gv-queue {
+  margin-top: 24px;
+}
+
+.gv-queue-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 4px 16px;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: 0 10px 24px rgba(72, 52, 30, 0.09);
+}
+
+.gv-queue-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.gv-queue-list li + li {
+  border-top: 1px solid rgba(42, 33, 27, 0.08);
+}
+
+.gv-queue-list .gv-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.gv-queue-no {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gv-queue-remove {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.gv-queue .gv-start {
+  margin-top: 14px;
+  overflow: hidden;
+  padding: 0 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gv-setup-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.gv-setup-actions .gv-start {
+  flex: 1;
+  width: auto;
+  font-size: 16px;
+}
+
+.gv-start--quiet {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px rgba(42, 33, 27, 0.2);
+}
+
+.gv-end-next {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .gv-toast {
+    animation: none;
+  }
   .gv-stamp {
     animation: none;
   }
