@@ -11,12 +11,10 @@ const SECTIONS = [
   { id: 'questions', label: 'Questions' },
 ]
 
-// The black tab that hangs from the top edge. At the top of the page it is
-// only the name and the one button; once the page has moved it widens to
-// show the sections, the one in view bright.
+// A plain bar across the top: the name, the sections, one button. It gains
+// a hairline once the page has moved, and the section in view is marked.
 export default function Nav() {
   const [moved, setMoved] = useState(false)
-  const [near, setNear] = useState(false)
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState('')
 
@@ -56,22 +54,16 @@ export default function Nav() {
     }
   }, [open])
 
-  const wide = moved || near
-
   return (
     <nav
       className="nav"
       aria-label="Main"
-      data-wide={wide}
+      data-moved={moved}
       data-open={open}
-      onPointerEnter={(event) => event.pointerType === 'mouse' && setNear(true)}
-      onPointerLeave={() => setNear(false)}
-      onFocus={() => setNear(true)}
-      onBlur={(event) => !event.currentTarget.contains(event.relatedTarget) && setNear(false)}
     >
       <div className="nav-bar">
         <a className="nav-brand" href="#top" onClick={() => setOpen(false)}>
-          <Image src={logoMark} alt="" width={26} height={26} />
+          <Image src={logoMark} alt="" width={30} height={30} />
           Zoom Gavel
         </a>
         <div className="nav-links">

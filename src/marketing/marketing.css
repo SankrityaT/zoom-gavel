@@ -64,63 +64,47 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
 }
 
-/* ------- the navigation: a black tab hanging from the top edge ------- */
+/* ------- the navigation: a plain bar across the top ------- */
 
 .nav {
   position: fixed;
-  top: 0;
-  left: 50%;
+  inset: 0 0 auto;
   z-index: 45;
-  width: 300px;
-  translate: -50% 0;
-  background: #000;
-  border-radius: 0 0 22px 22px;
-  color: #f1f0ee;
-  box-shadow:
-    0 20px 50px -20px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
-  transition: width 360ms var(--ease);
+  /* Always on paper, so the links read over the hero's coloured shapes. */
+  background: rgba(251, 247, 239, 0.9);
+  border-bottom: 1px solid transparent;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  transition: border-color 240ms var(--ease);
 }
 
-/* The shoulders curve into the top edge. */
-.nav::before,
-.nav::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  width: 14px;
-  height: 14px;
-}
-
-.nav::before {
-  left: -14px;
-  background: radial-gradient(circle at 0 100%, transparent 13.5px, #000 14px);
-}
-
-.nav::after {
-  right: -14px;
-  background: radial-gradient(circle at 100% 100%, transparent 13.5px, #000 14px);
+/* A hairline once the page has moved. */
+.nav[data-moved='true'],
+.nav[data-open='true'] {
+  border-bottom-color: var(--gv-rule);
 }
 
 .nav-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 54px;
-  padding: 0 9px 0 16px;
-  overflow: hidden;
-  transition: height 360ms var(--ease);
+  gap: 24px;
+  max-width: 1240px;
+  height: 64px;
+  margin-inline: auto;
+  padding-inline: 20px;
 }
 
 .nav-brand {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 4px 8px 4px 0;
-  color: inherit;
-  font-size: 16px;
-  font-weight: 600;
+  gap: 10px;
+  color: var(--gv-ink);
+  font-family: var(--font-display);
+  font-variation-settings: 'opsz' 40, 'WONK' 0;
+  font-weight: 560;
+  font-size: 20px;
+  letter-spacing: -0.01em;
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
@@ -133,19 +117,15 @@
 .nav-links {
   display: none;
   align-items: center;
+  gap: 4px;
   margin-inline: auto;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 160ms,
-    visibility 0s 160ms;
 }
 
 .nav-links a {
-  padding: 8px 11px;
-  border-radius: 999px;
-  color: #a3a29f;
-  font-size: 15px;
+  position: relative;
+  padding: 10px 12px;
+  color: var(--gv-ink-soft);
+  font-size: 15.5px;
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
@@ -155,20 +135,37 @@
 
 .nav-links a:hover,
 .nav-links a[aria-current='true'] {
-  color: #f1f0ee;
+  color: var(--gv-ink);
+}
+
+/* The section in view is underlined. */
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 3px;
+  height: 1.5px;
+  background: var(--gv-ink);
+  scale: 0 1;
+  transform-origin: left;
+  transition: scale 240ms var(--ease);
+}
+
+.nav-links a[aria-current='true']::after {
+  scale: 1 1;
 }
 
 .nav-cta {
   flex: none;
   display: none;
   align-items: center;
-  height: 36px;
-  margin-left: auto;
-  padding: 0 15px;
+  height: 40px;
+  padding: 0 18px;
   border-radius: 999px;
-  background: #f1f0ee;
-  color: #000;
-  font-size: 14.5px;
+  background: var(--gv-ink);
+  color: var(--gv-cream);
+  font-size: 15px;
   font-weight: 600;
   line-height: 1;
   text-decoration: none;
@@ -177,46 +174,38 @@
 }
 
 .nav-cta:hover {
-  opacity: 0.9;
+  opacity: 0.88;
 }
 
 .nav-menu {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin-left: auto;
+  margin-right: -10px;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: none;
-  color: inherit;
+  color: var(--gv-ink);
   cursor: pointer;
-}
-
-.nav :focus-visible {
-  outline: 2px solid #7fb0ff;
-  outline-offset: -2px;
-  border-radius: 999px;
-}
-
-.nav[data-open='true'] {
-  width: calc(100vw - 16px);
-  border-radius: 0 0 26px 26px;
 }
 
 .nav-sheet {
   display: grid;
-  padding: 4px 20px 22px;
-  animation: nav-drop 240ms var(--ease) both;
+  max-height: calc(100dvh - 64px);
+  padding: 0 20px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .nav-sheet a {
   display: flex;
   align-items: center;
-  height: 54px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  color: #d0cfcc;
+  height: 56px;
+  border-top: 1px solid var(--gv-rule);
+  color: var(--gv-ink);
   font-size: 19px;
   line-height: 1;
   text-decoration: none;
@@ -224,32 +213,25 @@
 
 .nav-sheet .nav-sheet-cta {
   justify-content: center;
-  height: 48px;
+  height: 50px;
   margin-top: 16px;
   border: 0;
   border-radius: 999px;
-  background: #f1f0ee;
-  color: #000;
+  background: var(--gv-ink);
+  color: var(--gv-cream);
   font-size: 16px;
   font-weight: 600;
 }
 
-@keyframes nav-drop {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
+@media (min-width: 761px) {
+  .nav-bar {
+    padding-inline: 48px;
   }
 }
 
 @media (min-width: 61rem) {
-  .nav {
-    width: 318px;
-  }
-
   .nav-links {
     display: flex;
-    width: 0;
-    overflow: hidden;
   }
 
   .nav-cta {
@@ -260,29 +242,13 @@
   .nav-sheet {
     display: none;
   }
-
-  .nav[data-wide='true'] {
-    width: 900px;
-  }
-
-  .nav[data-wide='true'] .nav-bar {
-    height: 58px;
-  }
-
-  .nav[data-wide='true'] .nav-links {
-    width: auto;
-    overflow: visible;
-    opacity: 1;
-    visibility: visible;
-    transition: opacity 160ms 120ms;
-  }
 }
 
 .hero-intro {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: clamp(92px, 12vh, 116px) 22px 0;
+  padding: clamp(104px, 13vh, 128px) 22px 0;
   animation: hero-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -376,7 +342,6 @@
 
 .chapter {
   padding-top: 80px;
-  scroll-margin-top: 0;
 }
 
 @media (min-width: 761px) {
@@ -1579,14 +1544,12 @@ h3,
 
 @media (prefers-reduced-motion: reduce) {
   .hero-intro,
-  .zm,
-  .nav-sheet {
+  .zm {
     animation: none;
   }
 
   .nav,
-  .nav-bar,
-  .nav-links,
+  .nav-links a::after,
   .button,
   .chip {
     transition: none;
