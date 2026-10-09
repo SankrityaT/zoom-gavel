@@ -64,34 +64,39 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
 }
 
-/* ------- the navigation: a plain bar across the top ------- */
+/* ------- the navigation: a paper bar floating under the top edge ------- */
 
 .nav {
   position: fixed;
-  inset: 0 0 auto;
+  top: 12px;
+  left: 50%;
   z-index: 45;
-  /* Always on paper, so the links read over the hero's coloured shapes. */
-  background: rgba(251, 247, 239, 0.9);
-  border-bottom: 1px solid transparent;
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  transition: border-color 240ms var(--ease);
+  width: min(1144px, 100% - 24px);
+  translate: -50% 0;
+  border-radius: 16px;
+  background: rgba(255, 253, 248, 0.86);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    0 0 0 1px rgba(36, 31, 21, 0.09),
+    0 1px 2px rgba(60, 40, 25, 0.06),
+    0 14px 34px -18px rgba(60, 40, 25, 0.28);
+  transition: box-shadow 240ms var(--ease);
 }
 
-/* A hairline once the page has moved. */
-.nav[data-moved='true'],
-.nav[data-open='true'] {
-  border-bottom-color: var(--gv-rule);
+.nav[data-moved='true'] {
+  box-shadow:
+    0 0 0 1px rgba(36, 31, 21, 0.12),
+    0 1px 2px rgba(60, 40, 25, 0.08),
+    0 22px 44px -20px rgba(60, 40, 25, 0.42);
 }
 
 .nav-bar {
   display: flex;
   align-items: center;
-  gap: 24px;
-  max-width: 1240px;
-  height: 64px;
-  margin-inline: auto;
-  padding-inline: 20px;
+  gap: 10px;
+  height: 56px;
+  padding: 0 8px 0 16px;
 }
 
 .nav-brand {
@@ -99,11 +104,12 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  margin-right: 8px;
   color: var(--gv-ink);
   font-family: var(--font-display);
   font-variation-settings: 'opsz' 40, 'WONK' 0;
   font-weight: 560;
-  font-size: 20px;
+  font-size: 19px;
   letter-spacing: -0.01em;
   line-height: 1;
   text-decoration: none;
@@ -117,43 +123,100 @@
 .nav-links {
   display: none;
   align-items: center;
-  gap: 4px;
-  margin-inline: auto;
 }
 
 .nav-links a {
-  position: relative;
-  padding: 10px 12px;
+  padding: 9px 11px;
+  border-radius: 9px;
   color: var(--gv-ink-soft);
-  font-size: 15.5px;
+  font-size: 15px;
   font-weight: 500;
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
-  transition: color 150ms;
+  transition:
+    color 150ms,
+    background 150ms;
 }
 
-.nav-links a:hover,
-.nav-links a[aria-current='true'] {
+.nav-links a:hover {
   color: var(--gv-ink);
 }
 
-/* The section in view is underlined. */
-.nav-links a::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 3px;
-  height: 1.5px;
-  background: var(--gv-ink);
-  scale: 0 1;
-  transform-origin: left;
-  transition: scale 240ms var(--ease);
+.nav-links a[aria-current='true'] {
+  background: rgba(36, 31, 21, 0.07);
+  color: var(--gv-ink);
 }
 
-.nav-links a[aria-current='true']::after {
-  scale: 1 1;
+/* The lot on the block: a dot, the item, the price, the clock. */
+.nav-live {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  margin-left: auto;
+  padding: 0 14px 0 12px;
+  border-radius: 10px;
+  background: var(--gv-paper);
+  box-shadow: inset 0 0 0 1px var(--gv-rule);
+  color: var(--gv-ink);
+  font-size: 14.5px;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 6px;
+  transition:
+    opacity 240ms var(--ease),
+    translate 240ms var(--ease),
+    visibility 0s 240ms;
+}
+
+.nav-live[data-shown='true'] {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+  transition-delay: 0s;
+}
+
+.nav-live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gv-ink-faint);
+}
+
+.nav-live i[data-open='true'] {
+  background: var(--gv-coral);
+  box-shadow: 0 0 0 4px rgba(221, 90, 44, 0.16);
+}
+
+.nav-live-name {
+  display: none;
+  color: var(--gv-ink-soft);
+}
+
+.nav-live b {
+  font-family: var(--font-display);
+  font-variation-settings: 'opsz' 40;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.nav-live-clock {
+  min-width: 2.6em;
+  font-family: var(--font-numeral);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--gv-ink-soft);
+}
+
+.nav-live[data-low='true'] .nav-live-clock {
+  color: var(--gv-coral);
 }
 
 .nav-cta {
@@ -161,8 +224,8 @@
   display: none;
   align-items: center;
   height: 40px;
-  padding: 0 18px;
-  border-radius: 999px;
+  padding: 0 17px;
+  border-radius: 10px;
   background: var(--gv-ink);
   color: var(--gv-cream);
   font-size: 15px;
@@ -170,23 +233,22 @@
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
-  transition: opacity 150ms;
+  transition: background 150ms;
 }
 
 .nav-cta:hover {
-  opacity: 0.88;
+  background: var(--gv-blue);
 }
 
 .nav-menu {
+  flex: none;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-left: auto;
-  margin-right: -10px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 10px;
   background: none;
   color: var(--gv-ink);
   cursor: pointer;
@@ -194,8 +256,8 @@
 
 .nav-sheet {
   display: grid;
-  max-height: calc(100dvh - 64px);
-  padding: 0 20px 22px;
+  max-height: calc(100dvh - 96px);
+  padding: 0 16px 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -203,10 +265,10 @@
 .nav-sheet a {
   display: flex;
   align-items: center;
-  height: 56px;
+  height: 54px;
   border-top: 1px solid var(--gv-rule);
   color: var(--gv-ink);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1;
   text-decoration: none;
 }
@@ -214,24 +276,22 @@
 .nav-sheet .nav-sheet-cta {
   justify-content: center;
   height: 50px;
-  margin-top: 16px;
+  margin-top: 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--gv-ink);
   color: var(--gv-cream);
   font-size: 16px;
   font-weight: 600;
 }
 
-@media (min-width: 761px) {
-  .nav-bar {
-    padding-inline: 48px;
-  }
-}
-
 @media (min-width: 61rem) {
   .nav-links {
     display: flex;
+  }
+
+  .nav-live-name {
+    display: inline;
   }
 
   .nav-cta {
@@ -1549,7 +1609,7 @@ h3,
   }
 
   .nav,
-  .nav-links a::after,
+  .nav-live,
   .button,
   .chip {
     transition: none;

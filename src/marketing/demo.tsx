@@ -64,6 +64,18 @@ export function useOnScreen(ref: RefObject<HTMLElement | null>, margin = '0px') 
   return onScreen
 }
 
+// True while the tab is the one being looked at.
+export function useTabVisible() {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState === 'visible')
+    update()
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
+  return visible
+}
+
 // The panel's sounds stay off on this page.
 export function useQuietCues() {
   useEffect(() => {

@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useRef } from 'react'
+import { useEffect } from 'react'
 import heroAtmosphere from './assets/hero-atmosphere.png'
 import heroLot from './assets/hero-lot.png'
 import {
@@ -13,9 +13,10 @@ import {
   PEOPLE,
   PRIYA,
   RoundPanel,
-  useOnScreen,
   useQuietCues,
+  useTabVisible,
 } from './demo'
+import { publishLive } from './live'
 import { type SimEvent, type SimLot, useSimAuction } from './sim'
 
 // One round of the glass horse, told in 40 seconds: the price climbs past
@@ -65,19 +66,33 @@ function Tool({ label, children, tone, count }: { label: string; children: React
 }
 
 function ZoomMeeting() {
-  const ref = useRef<HTMLDivElement>(null)
-  const onScreen = useOnScreen(ref)
-  const { state, auction } = useSimAuction({
+  // The round keeps running off-screen: the navigation carries it down the page.
+  const visible = useTabVisible()
+  const { state, auction, running } = useSimAuction({
     lot: HERO_LOT,
     people: PEOPLE,
     script: HERO_SCRIPT,
-    active: onScreen,
+    active: visible,
+    persistent: true,
     loopAfterMs: 6000,
     stillAt: 17000,
   })
 
+  const { session } = state
+  useEffect(() => {
+    if (!running || session.endsAt === null) return
+    publishLive({
+      itemName: session.itemName,
+      price: session.currentBid,
+      endsAt: new Date(session.endsAt).getTime(),
+      open: session.status === 'open',
+      sold: session.status === 'closed' && session.leader !== null && session.reserveMet,
+    })
+  }, [running, session.itemName, session.currentBid, session.endsAt, session.status, session.leader, session.reserveMet])
+  useEffect(() => () => publishLive(null), [])
+
   return (
-    <div id="demo" className="zm" ref={ref}>
+    <div id="demo" className="zm">
       <p className="visually-hidden">
         A Zoom meeting with the Gavel app open in the side panel. The host, {HOST_NAME}, shows a cobalt glass horse on
         camera while three people bid on it. The round is simulated and repeats.

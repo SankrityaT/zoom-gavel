@@ -2,7 +2,9 @@
 
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
+import { formatUsd } from '@/lib/gavel/demo'
 import logoMark from './assets/logo.png'
+import { useLive } from './live'
 
 const SECTIONS = [
   { id: 'lot', label: 'How a lot goes' },
@@ -11,12 +13,50 @@ const SECTIONS = [
   { id: 'questions', label: 'Questions' },
 ]
 
-// A plain bar across the top: the name, the sections, one button. It gains
-// a hairline once the page has moved, and the section in view is marked.
+// The lot on the block, carried down the page: its price and its clock, as
+// they run in the hero's meeting. It joins the bar once that meeting has
+// scrolled away.
+function LiveLot({ shown }: { shown: boolean }) {
+  const live = useLive()
+  const [now, setNow] = useState(0)
+  const open = live?.open ?? false
+
+  useEffect(() => {
+    if (!open) return
+    const tick = () => setNow(Date.now())
+    tick()
+    const id = setInterval(tick, 250)
+    return () => clearInterval(id)
+  }, [open])
+
+  if (!live) return null
+  const left = Math.max(0, Math.ceil((live.endsAt - now) / 1000))
+  const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`
+  return (
+    <a
+      className="nav-live"
+      href="#demo"
+      data-shown={shown}
+      data-low={live.open && left <= 10}
+      tabIndex={shown ? undefined : -1}
+      aria-hidden={shown ? undefined : true}
+      aria-label={`The demo lot, ${live.itemName}, at ${formatUsd(live.price)}. Back to the meeting.`}
+    >
+      <i aria-hidden="true" data-open={live.open} />
+      <span className="nav-live-name">{live.itemName}</span>
+      <b>{formatUsd(live.price)}</b>
+      <span className="nav-live-clock">{live.open ? (now === 0 ? '' : clock) : live.sold ? 'Sold' : 'Closed'}</span>
+    </a>
+  )
+}
+
+// A paper bar floating under the top edge: the name, the sections, the lot
+// on the block and one button.
 export default function Nav() {
   const [moved, setMoved] = useState(false)
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState('')
+  const [pastDemo, setPastDemo] = useState(false)
 
   useEffect(() => {
     const onScroll = () => setMoved(window.scrollY > 8)
@@ -35,9 +75,16 @@ export default function Nav() {
       const el = document.getElementById(section.id)
       if (el) observer.observe(el)
     }
+    // The meeting in the hero has gone by.
+    const demo = document.getElementById('demo')
+    const demoObserver = new IntersectionObserver(([entry]) => setPastDemo(!entry.isIntersecting), {
+      rootMargin: '-80px 0px 0px 0px',
+    })
+    if (demo) demoObserver.observe(demo)
     return () => {
       window.removeEventListener('scroll', onScroll)
       observer.disconnect()
+      demoObserver.disconnect()
     }
   }, [])
 
@@ -76,6 +123,7 @@ export default function Nav() {
             GitHub
           </a>
         </div>
+        <LiveLot shown={pastDemo} />
         <a className="nav-cta" href="/zoom-test">
           Open the panel
         </a>
