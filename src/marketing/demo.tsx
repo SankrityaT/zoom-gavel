@@ -171,38 +171,57 @@ export function Crop({ children, className = '' }: { children: ReactNode; classN
   )
 }
 
-function StillSlot({ value, money, empty }: { value: string; money?: boolean; empty?: boolean }) {
+function StillSlot({ value, money, empty, caret }: { value: string; money?: boolean; empty?: boolean; caret?: boolean }) {
   const classes = ['gv-slot']
   if (money) classes.push('gv-slot--money')
   if (empty) classes.push('gv-slot--empty')
+  if (caret) classes.push('gv-slot--typing')
   return (
     <span className={classes.join(' ')}>
       {money && !empty && <span aria-hidden="true">$</span>}
       <span className={empty ? 'gv-slot-text gv-slot-text--empty' : 'gv-slot-text'}>{value}</span>
+      {caret && <i className="slot-caret" aria-hidden="true" />}
     </span>
   )
 }
 
+/** What the host has typed into the setup sentence so far; empty strings show the placeholders. */
+export type LotDraft = { item: string; opening: string; reserve: string; buyNow: string }
+const EMPTY_DRAFT: LotDraft = { item: '', opening: '', reserve: '', buyNow: '' }
+
 /** The host's desk between rounds: the queue and the setup sentence. */
-export function HostDeskPanel({ blank = false }: { blank?: boolean }) {
+export function HostDeskPanel({
+  blank = false,
+  draft,
+  typing,
+}: {
+  blank?: boolean
+  /** A first lot being written; replaces the queue and the filled-in example. */
+  draft?: LotDraft
+  /** The field the caret is in. */
+  typing?: keyof LotDraft | null
+}) {
+  const first = blank || draft !== undefined
+  const lot = draft ?? (blank ? EMPTY_DRAFT : { item: 'Glass horse', opening: '950', reserve: '1,100', buyNow: '2,000' })
+  const ready = lot.item !== '' && lot.opening !== '' && typing === null
   return (
     <section className="gv" aria-label="Gavel panel, host view">
       <PanelHead {...HOSTING} />
-      {!blank && (
+      {!first && (
         <div className="gv-queue">
           <div className="gv-sect">
             <h3>Up next</h3>
             <span>{QUEUE.length} lots lined up</span>
           </div>
           <ol className="gv-queue-list">
-            {QUEUE.map((lot, index) => (
-              <li key={lot.itemName}>
+            {QUEUE.map((queued, index) => (
+              <li key={queued.itemName}>
                 <span className="gv-queue-no" aria-hidden="true">
                   {index + 1}
                 </span>
                 <span className="gv-name">
-                  <strong>{lot.itemName}</strong>
-                  <span>{lot.detail}</span>
+                  <strong>{queued.itemName}</strong>
+                  <span>{queued.detail}</span>
                 </span>
                 <span className="gv-queue-remove">Remove</span>
               </li>
@@ -211,19 +230,19 @@ export function HostDeskPanel({ blank = false }: { blank?: boolean }) {
         </div>
       )}
       <div className="gv-setup">
-        <p className="gv-setup-kicker">{blank ? 'Your first lot' : 'Add another lot'}</p>
+        <p className="gv-setup-kicker">{first ? 'Your first lot' : 'Add another lot'}</p>
         <p className="gv-sentence">
-          Sell <StillSlot value={blank ? 'an item' : 'Glass horse'} empty={blank} /> starting at{' '}
+          Sell <StillSlot value={lot.item || 'an item'} empty={!lot.item} caret={typing === 'item'} /> starting at{' '}
           <span className="gv-keep">
-            <StillSlot value={blank ? '$0' : '950'} money empty={blank} />,
+            <StillSlot value={lot.opening || '$0'} money empty={!lot.opening} caret={typing === 'opening'} />,
           </span>{' '}
           reserve{' '}
           <span className="gv-keep">
-            <StillSlot value={blank ? 'None' : '1,100'} money empty={blank} />,
+            <StillSlot value={lot.reserve || 'None'} money empty={!lot.reserve} caret={typing === 'reserve'} />,
           </span>{' '}
           Buy Now{' '}
           <span className="gv-keep">
-            <StillSlot value={blank ? 'None' : '2,000'} money empty={blank} />.
+            <StillSlot value={lot.buyNow || 'None'} money empty={!lot.buyNow} caret={typing === 'buyNow'} />.
           </span>
         </p>
         <div className="gv-lengths">
@@ -233,14 +252,67 @@ export function HostDeskPanel({ blank = false }: { blank?: boolean }) {
             </span>
           ))}
         </div>
-        {!blank && (
-          <div className="gv-setup-actions">
-            <span className="gv-start gv-start--quiet">Add to queue</span>
-            <span className="gv-start">Start this now</span>
-          </div>
-        )}
+        <div className="gv-setup-actions">
+          <span className={first && !ready ? 'gv-start gv-start--quiet gv-start--waiting' : 'gv-start gv-start--quiet'}>
+            Add to queue
+          </span>
+          <span className={first && !ready ? 'gv-start gv-start--waiting' : 'gv-start'}>
+            {first ? 'Start bidding' : 'Start this now'}
+          </span>
+        </div>
       </div>
     </section>
+  )
+}
+
+// Lots a host might put up first, typed into the sentence one after another.
+const FIRST_LOTS: LotDraft[] = [
+  { item: 'Signed team jersey', opening: '40', reserve: '', buyNow: '120' },
+  { item: 'A week at the lake cabin', opening: '300', reserve: '500', buyNow: '' },
+  { item: 'Grandfather clock', opening: '650', reserve: '', buyNow: '1,200' },
+]
+const FIELDS: (keyof LotDraft)[] = ['item', 'opening', 'reserve', 'buyNow']
+const KEY_MS = 55
+const FIELD_PAUSE_MS = 320
+const HOLD_MS = 2600
+
+/** The host's first lot, being typed into the sentence. Under reduced motion it stands written. */
+export function TypedFirstLot() {
+  const ref = useRef<HTMLDivElement>(null)
+  const onScreen = useOnScreen(ref)
+  const [lotIndex, setLotIndex] = useState(0)
+  const [draft, setDraft] = useState<LotDraft>(FIRST_LOTS[0])
+  const [typing, setTyping] = useState<keyof LotDraft | null>(null)
+
+  useEffect(() => {
+    if (!onScreen || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const target = FIRST_LOTS[lotIndex]
+    const timers: ReturnType<typeof setTimeout>[] = []
+    let at = 400
+    const later = (fn: () => void) => timers.push(setTimeout(fn, at))
+    later(() => {
+      setDraft(EMPTY_DRAFT)
+      setTyping('item')
+    })
+    for (const field of FIELDS) {
+      const text = target[field]
+      later(() => setTyping(field))
+      for (let length = 1; length <= text.length; length += 1) {
+        at += KEY_MS
+        later(() => setDraft((current) => ({ ...current, [field]: text.slice(0, length) })))
+      }
+      at += FIELD_PAUSE_MS
+    }
+    later(() => setTyping(null))
+    at += HOLD_MS
+    later(() => setLotIndex((index) => (index + 1) % FIRST_LOTS.length))
+    return () => timers.forEach(clearTimeout)
+  }, [onScreen, lotIndex])
+
+  return (
+    <div ref={ref}>
+      <HostDeskPanel draft={draft} typing={typing} />
+    </div>
   )
 }
 

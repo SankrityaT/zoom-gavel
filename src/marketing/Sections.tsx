@@ -1,6 +1,6 @@
 import Image from 'next/image'
 import logoMark from './assets/logo.png'
-import { Crop, HostDeskPanel } from './demo'
+import { Crop, TypedFirstLot } from './demo'
 import { ChapterHead } from './parts'
 
 const REPO = 'https://github.com/SankrityaT/zoom-gavel'
@@ -58,19 +58,24 @@ export function Ending() {
     <>
       <div className="wrap">
         <section className="ending rise" aria-labelledby="ending-title">
-          <h2 id="ending-title">Put your first lot up.</h2>
-          <p>Open the panel in a browser and run a sandbox auction now. No meeting needed.</p>
-          <div className="ending-actions">
-            <a className="button button--cream" href="/zoom-test">
-              Open the panel
-            </a>
-            <a className="button button--line" href={REPO} target="_blank" rel="noreferrer">
-              Read the source
-            </a>
+          <div className="ending-copy">
+            <h2 id="ending-title">Put your first lot up.</h2>
+            <p>
+              Say what is for sale, where bidding starts and how long it runs. Open the panel in a browser to try a
+              sandbox auction now, no meeting needed.
+            </p>
+            <div className="ending-actions">
+              <a className="button button--cream" href="/zoom-test">
+                Open the panel
+              </a>
+              <a className="button button--line" href={REPO} target="_blank" rel="noreferrer">
+                Read the source
+              </a>
+            </div>
           </div>
           <div className="ending-panel" aria-hidden="true">
             <Crop>
-              <HostDeskPanel blank />
+              <TypedFirstLot />
             </Crop>
           </div>
         </section>
