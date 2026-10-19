@@ -123,6 +123,15 @@ export async function rateLimitHit(
   })
 }
 
+// Forgets one Zoom user after they remove the app. The key is the keyed hash
+// of their Zoom id, the only form in which the tables ever held it.
+export async function purgeZoomUser(bidderKey: string) {
+  return rpc<{ ok: boolean; reason?: string; max_bids?: number; bids?: number; rounds?: number; sessions?: number }>(
+    'purge_zoom_user',
+    { p_bidder_key: bidderKey },
+  )
+}
+
 export async function setMeetingHost(uuid: string, hostKey: string) {
   return rpc<{ ok: boolean; reason?: string }>('set_meeting_host', {
     p_uuid: uuid,

@@ -62,5 +62,7 @@ export type ZoomWebhookEvent = {
   payload?: {
     plainToken?: string
     object?: { uuid?: string; host_id?: string; id?: string | number }
+    /** app_deauthorized: the person who removed the app. */
+    user_id?: string
   }
 }

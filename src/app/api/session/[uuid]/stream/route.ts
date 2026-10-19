@@ -39,6 +39,16 @@ export async function GET(
   if (limited) return limited
 
   const viewer = await readViewer(request, uuid)
+  // Every stream holds a realtime channel and a poll timer for its session, so
+  // a key nobody created gets neither.
+  try {
+    if ((await getState(uuid, viewer)) === null) {
+      return NextResponse.json({ error: 'session not found' }, { status: 404 })
+    }
+  } catch (error) {
+    console.error('stream existence check failed:', error)
+    return NextResponse.json({ error: 'internal error' }, { status: 500 })
+  }
   const encoder = new TextEncoder()
   let stop: () => void = () => {}
 

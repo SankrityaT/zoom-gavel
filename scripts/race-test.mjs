@@ -374,6 +374,10 @@ await scenario('S15', 'SSE stream pushes bids', async () => {
   check('S15 no per-bid events', !events.some((e) => e.name === 'bid'))
   const bad = await fetch(`${BASE_URL}/api/session/${encodeURIComponent('bad key!')}/stream`)
   check('S15 invalid key 400', bad.status === 400, String(bad.status))
+  const unknown = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(key('nobody-made-this'))}/stream`)
+  check('S15 a session nobody created gets no stream (404)', unknown.status === 404, String(unknown.status))
+  const oddId = await api(`${encodeURIComponent(k)}/queue`, { method: 'POST', body: { action: 'remove', id: 1e300 } })
+  check('S15 an absurd queue id is a 400, not a crash', oddId.status === 400, String(oddId.status))
 })
 
 if (WEBHOOK_TOKEN && SESSION_SECRET) {
@@ -415,8 +419,49 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const r5 = await start(k, {}, host)
     check('S14i real host restarts', r5.status === 200, String(r5.status))
   })
+
+  await scenario('S24', 'app removal erases the person', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const leaver = mintCookie('userLeaver', mid)
+    const stayer = mintCookie('userStayer', mid)
+    check('S24a leaver starts a round', (await start(k, {}, leaver)).status === 200)
+    const hand = await bid(k, 150, 'Leaver Name', leaver)
+    const other = await bid(k, 175, 'Stayer Name', stayer)
+    const ceiling = await api(`${encodeURIComponent(k)}/max`, { method: 'POST', body: { amount: 900, bidderId: 'Leaver Name' }, cookie: leaver })
+    check('S24b bids and a max bid exist', hand.status === 200 && other.status === 200 && ceiling.status === 200, JSON.stringify([hand.status, other.status, ceiling.status]))
+    const stopped = await stop(k, leaver)
+    const before = await api(`${encodeURIComponent(k)}/results`, { cookie: leaver })
+    check('S24c the sale names the winner before removal', stopped.status === 200 && JSON.stringify(before.json).includes('Leaver Name'), JSON.stringify(before.json).slice(0, 200))
+
+    const noUser = await signed({ event: 'app_deauthorized', payload: {} })
+    check('S24d a notice without a user is a 400', noUser.status === 400, String(noUser.status))
+    const forged = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver' } }, { token: 'wrong' })
+    check('S24e a forged notice is a 401 and removes nothing', forged.status === 401, String(forged.status))
+    const still = await api(`${encodeURIComponent(k)}/results`, { cookie: leaver })
+    check('S24f nothing was removed by the forged notice', JSON.stringify(still.json).includes('Leaver Name'))
+
+    const gone = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver', account_id: 'acct', client_id: 'cid' } })
+    check('S24g a signed notice is accepted', gone.status === 200, String(gone.status))
+    // The round is over, so its leaderboard is still the live state: the
+    // leaver is erased from it and the other bidder is not.
+    const state = await get(k, stayer)
+    check('S24h the name is gone from the live state', !JSON.stringify(state.json).includes('Leaver Name'))
+    check('S24i the other bidder is untouched', JSON.stringify(state.json).includes('Stayer Name'))
+    // The host claim went with them. The first verified participant to start a
+    // round claims it, and can then read the results.
+    const claim = await start(k, {}, stayer)
+    check('S24j the host role is free to claim again', claim.status === 200, String(claim.status))
+    const after = await api(`${encodeURIComponent(k)}/results`, { cookie: stayer })
+    const text = JSON.stringify(after.json)
+    check('S24k the name is gone from the results', after.status === 200 && !text.includes('Leaver Name'), text.slice(0, 240))
+    // The leaver's max bid (900) answered the other bid (175) with 200, and won.
+    check('S24l the sale is still on record, with no name on it', after.json?.rounds?.length === 1 && after.json.rounds[0].finalBid === 200 && after.json.rounds[0].winner?.name === 'Removed bidder', text.slice(0, 240))
+    const again = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver' } })
+    check('S24m the notice is safe to repeat', again.status === 200, String(again.status))
+  })
 } else {
-  console.log('SKIP  S14 webhook host (set ZOOM_WEBHOOK_SECRET_TOKEN and SESSION_SECRET to run)')
+  console.log('SKIP  S14 and S24 webhook scenarios (set ZOOM_WEBHOOK_SECRET_TOKEN and SESSION_SECRET to run)')
 }
 
 await scenario('S17', 'buy now race', async () => {

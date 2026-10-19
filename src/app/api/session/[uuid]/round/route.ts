@@ -3,7 +3,7 @@ import { readViewer } from '@/lib/gavel/auth'
 import { hostKeyFor } from '@/lib/gavel/host'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { getState, startRound, stopRound, type RoundOutcome } from '@/lib/gavel/server'
-import { boundedInt, boundedString, rejectCrossSite } from '@/lib/gavel/validate'
+import { boundedInt, boundedString, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -18,7 +18,7 @@ export async function POST(
   { params }: RouteContext<'/api/session/[uuid]/round'>,
 ) {
   const { uuid } = await params
-  if (!uuid || uuid.length > 200) return badRequest('invalid session key')
+  if (!isSessionKey(uuid)) return badRequest('invalid session key')
   const crossSite = rejectCrossSite(request)
   if (crossSite) return NextResponse.json({ error: crossSite }, { status: 403 })
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { bidderKey, meetingSessionKey } from '@/lib/gavel/auth'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
-import { setMeetingHost } from '@/lib/gavel/server'
+import { purgeZoomUser, setMeetingHost } from '@/lib/gavel/server'
 import { hmacHex, verifyZoomWebhook, type ZoomWebhookEvent } from '@/lib/gavel/zoom-webhook'
 
 const MAX_BODY_BYTES = 64 * 1024
@@ -64,6 +64,23 @@ export async function POST(request: Request) {
       await setMeetingHost(meetingSessionKey(uuid), hostKey)
     } catch (error) {
       console.error('webhook meeting.started failed:', error)
+      return NextResponse.json({ error: 'internal error' }, { status: 500 })
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  // The person removed the app: forget them. Zoom retries on a non-2xx, so a
+  // failed purge answers 500 and is attempted again.
+  if (event.event === 'app_deauthorized') {
+    const userId = event.payload?.user_id
+    if (typeof userId !== 'string' || !userId) {
+      return NextResponse.json({ error: 'user_id required' }, { status: 400 })
+    }
+    try {
+      const outcome = await purgeZoomUser(await bidderKey(`zoom:${userId}`, sessionSecret))
+      console.info('deauthorization: removed a user\'s data', JSON.stringify(outcome))
+    } catch (error) {
+      console.error('webhook app_deauthorized failed:', error)
       return NextResponse.json({ error: 'internal error' }, { status: 500 })
     }
     return NextResponse.json({ ok: true })

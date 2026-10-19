@@ -3,7 +3,7 @@ import { readViewer } from '@/lib/gavel/auth'
 import { MAX_BID } from '@/lib/gavel/demo'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { ensureSession, getState, placeBid } from '@/lib/gavel/server'
-import { anonBidderKey, boundedInt, boundedString, rejectCrossSite } from '@/lib/gavel/validate'
+import { anonBidderKey, boundedInt, boundedString, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -19,6 +19,7 @@ export async function GET(
   { params }: RouteContext<'/api/session/[uuid]'>,
 ) {
   const { uuid } = await params
+  if (!isSessionKey(uuid)) return badRequest('invalid session key')
   try {
     const viewer = await readViewer(request, uuid)
     const state = await getState(uuid, viewer)
@@ -36,7 +37,7 @@ export async function POST(
   { params }: RouteContext<'/api/session/[uuid]'>,
 ) {
   const { uuid } = await params
-  if (!uuid || uuid.length > 200) return badRequest('invalid session key')
+  if (!isSessionKey(uuid)) return badRequest('invalid session key')
   const crossSite = rejectCrossSite(request)
   if (crossSite) return NextResponse.json({ error: crossSite }, { status: 403 })
 

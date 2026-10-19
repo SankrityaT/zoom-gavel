@@ -65,7 +65,7 @@ export async function POST(
       if (limited) return limited
       outcome = await queueAdd(uuid, host.hostKey, parsed.lot)
     } else if (payload.action === 'remove') {
-      if (!Number.isInteger(payload.id)) return badRequest('id is required')
+      if (!Number.isSafeInteger(payload.id) || (payload.id as number) < 1) return badRequest('id is required')
       const limited = await enforce([rule(`queue:ip:${clientIp(request)}`, LIMITS.queuePerIp)])
       if (limited) return limited
       outcome = await queueRemove(uuid, host.hostKey, payload.id as number)
