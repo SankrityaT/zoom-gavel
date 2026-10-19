@@ -1,0 +1,153 @@
+import type { Metadata } from 'next'
+import Doc from '@/legal/Doc'
+import { APP_NAME, DEVELOPER, SUPPORT_EMAIL } from '@/legal/contact'
+
+export const metadata: Metadata = {
+  title: 'Privacy policy',
+  description: 'What Gavel for Zoom Meetings collects, why, who sees it, and how long it is kept.',
+}
+
+export default function Privacy() {
+  return (
+    <Doc
+      title="Privacy policy"
+      lead={`${APP_NAME} runs live auctions inside a Zoom meeting. This page says what it collects, why, who can see it, how long it is kept, and how to have it removed.`}
+    >
+      <h2>Who we are</h2>
+      <p>
+        {APP_NAME} (Zoom Gavel) is built by {DEVELOPER} as part of the ASU Next Lab × Zoom fellowship. Write to{' '}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> about anything on this page.
+      </p>
+
+      <h2>What we collect, and why</h2>
+      <table className="doc-table">
+        <thead>
+          <tr>
+            <th>What</th>
+            <th>Why we need it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>Your Zoom user ID</strong>, kept only as a keyed one-way hash. The ID itself is never written to our database.
+            </td>
+            <td>To tell bidders apart, and to know which person is the meeting host.</td>
+          </tr>
+          <tr>
+            <td>
+              <strong>Your display name</strong> as Zoom reports it, or the name you type if you join from a browser.
+            </td>
+            <td>To show who is bidding and who won.</td>
+          </tr>
+          <tr>
+            <td>
+              <strong>The meeting’s ID</strong>, encoded into the name of the auction session.
+            </td>
+            <td>So everyone in one meeting shares one auction, and only that meeting’s host can run it.</td>
+          </tr>
+          <tr>
+            <td>
+              <strong>Your bids and max bids</strong>, with the times they were placed.
+            </td>
+            <td>To run the auction: pick the winner, show the leaderboard, and bid for you up to the max you set.</td>
+          </tr>
+          <tr>
+            <td>
+              <strong>What the host enters</strong>: item names, starting bid, reserve, Buy Now price, round length, and the lots lined up.
+            </td>
+            <td>To run each lot and to build the results list.</td>
+          </tr>
+          <tr>
+            <td>
+              <strong>Your IP address</strong>, inside short-lived counters.
+            </td>
+            <td>To stop one source flooding the service with requests.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        When Zoom tells us a meeting has started, we receive the meeting’s ID and its host’s ID. We use them to decide who may run the
+        auction. We do not read the participant list, chat, audio, video, recordings, files or any other meeting content, and we do not
+        collect your email address.
+      </p>
+
+      <h2>Money</h2>
+      <p>
+        The app never handles payment. It records who won and for how much; the host and the winner settle up themselves, outside the
+        app. We collect no card or bank details.
+      </p>
+
+      <h2>Who can see what</h2>
+      <ul>
+        <li>Everyone in an auction sees the lot, the current price, who is leading, and the ranking of bidders by name.</li>
+        <li>An amount you bid is shown only to you and the host. Other bidders see your rank, not your number.</li>
+        <li>The ceiling of a max bid is shown only to you. Nobody else, including the host, can see it. The bids it places for you appear like any other bid.</li>
+        <li>
+          The host can see every bidder’s amount and can download a results file (CSV) with each lot, the winner’s name and the final
+          price.
+        </li>
+      </ul>
+
+      <h2>Cookies and browser storage</h2>
+      <ul>
+        <li>
+          <code>gavel_ctx</code>: a signed cookie, kept for 6 hours, that proves who you are to our server after Zoom has told us.
+        </li>
+        <li>
+          In your browser’s storage: whether you muted sounds, a random ID for demo sessions, and your own last bid and max bid for the
+          current auction, so you still see them after a reload.
+        </li>
+        <li>We use no advertising or analytics cookies and no third-party trackers.</li>
+      </ul>
+
+      <h2>Who else handles the data</h2>
+      <ul>
+        <li>
+          <strong>Vercel</strong> hosts the site and keeps ordinary request logs, including IP addresses, under its own retention
+          rules.
+        </li>
+        <li>
+          <strong>Supabase</strong> stores the auction data in a database in the United States (Oregon).
+        </li>
+        <li>
+          <strong>Zoom</strong> provides the platform the app runs in and tells us who you are inside a meeting.
+        </li>
+      </ul>
+      <p>We do not sell your data and we do not share it for advertising.</p>
+
+      <h2>How long we keep it</h2>
+      <ul>
+        <li>Auctions started from a browser link or the demo page are deleted 24 hours after their last activity.</li>
+        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity.</li>
+        <li>The counters that hold IP addresses are deleted within 1 hour of expiring.</li>
+        <li>
+          When you remove the app from Zoom, Zoom notifies us and we erase you straight away: your max bids are deleted, and your name
+          is replaced by “Removed bidder” on your bids and on any lot you won. The record of the sale stays; your name does not.
+        </li>
+      </ul>
+
+      <h2>Your rights</h2>
+      <p>
+        Whatever the law where you live says, you may ask us what we hold about you, ask for it to be corrected or deleted, or object to
+        how it is used. Removing the app from Zoom (Apps, then My Apps, then Remove) erases you automatically as described above. To
+        ask for anything else, write to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> from any address; tell us your display
+        name and roughly when you bid, since we cannot look you up by email. We answer within 30 days.
+      </p>
+
+      <h2>How we protect it</h2>
+      <ul>
+        <li>Everything travels over HTTPS.</li>
+        <li>Zoom IDs are stored only as keyed hashes. The database cannot be read directly by the public; every read goes through our server.</li>
+        <li>Each auction’s live updates use a private channel that only someone who already holds that auction’s key can join.</li>
+        <li>Requests are rate limited, and the host’s powers are checked on the server, not in the browser.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>The app is not meant for anyone under 16 and we do not knowingly collect their data.</p>
+
+      <h2>Changes</h2>
+      <p>If this policy changes in a way that matters, the date at the foot of the page changes with it.</p>
+    </Doc>
+  )
+}

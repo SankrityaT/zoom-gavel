@@ -1,0 +1,144 @@
+# Zoom Marketplace submission pack
+
+Everything Zoom asks for when submitting Gavel for Zoom Meetings for review,
+written once so it can be pasted into the Marketplace forms. Sources checked
+against Zoom's published review docs on 2026-10-19:
+[submit for review](https://developers.zoom.us/docs/distribute/app-submission/submit-apps-review/),
+[common rejection issues](https://developers.zoom.us/docs/distribute/app-submission/common-rejection-issues/),
+[security requirements](https://developers.zoom.us/docs/distribute/security-requirements/).
+
+## Before you can submit (needs a person)
+
+| # | What | Why | Who |
+|---|------|-----|-----|
+| 1 | **Serve the app from a domain you own**, e.g. `gavel.<yourdomain>`, not `zoomgavel.vercel.app`. Add it in Vercel, point DNS at it, and use it for the Home URL, webhook URL, privacy, terms and support URLs. | Zoom requires every listing and resource URL on a fully qualified domain owned by the developer, verifies it by TXT record, HTML file or meta tag, and its security guidance says to avoid default hosting-platform domains. | You (DNS) |
+| 2 | Confirm the support address and hours in `src/legal/contact.ts` (currently `sankritya.apps@gmail.com`, replies within 2 business days, Mon to Fri 9 to 5 Arizona time). The pages promise this publicly. | Zoom requires an active support channel with hours and a first-response time. | You |
+| 3 | In the Marketplace app, set the **Deauthorization notification URL** to `https://<domain>/api/zoom/webhook` and subscribe to the `app_deauthorized` event. | Required for every published app. The handler is built and tested (race scenario S24); Zoom has to be told where it is. | You or Aside |
+| 4 | Create or switch to the **Production** app credentials and put its Client Secret in Vercel Production as `ZOOM_CLIENT_SECRET`. | Zoom wants the Production Client ID on a first submission. | You |
+| 5 | Run `docs/in-meeting-test.md` once in a real meeting, sounds and CSV download especially. | Never tried inside the Zoom client. A reviewer will. | You |
+| 6 | Rotate the webhook Secret Token (it appeared once in a tool transcript on 2026-10-02) and update `ZOOM_WEBHOOK_SECRET_TOKEN` in Vercel. | Zoom asks that keys and secrets be rotated regularly. | You |
+
+## Listing
+
+- **App name:** Gavel for Zoom Meetings
+- **Short description (150 max, this is 121):**
+  Live auctions inside your Zoom meeting. Queue items, bid in real time, set a max bid, get alerts, and export the results.
+- **Long description:**
+
+  Gavel turns a Zoom meeting into a live auction house, without anyone leaving the call.
+
+  The host fills in one sentence (what is for sale, the starting bid, an optional reserve and Buy Now price) and starts the clock. Everyone in the meeting bids from a panel beside the video. Bids land on every screen in well under a second, the clock extends when a bid arrives in the last seconds so nobody wins by sniping, and the hammer falls with a Sold stamp.
+
+  For hosts: line up as many items as you like and start each with one tap. Watch every bidder's amount, and download the results as a CSV when the night is done. Invite people who are not on Zoom with a link; they bid from a browser.
+
+  For bidders: set a max bid and Gavel bids for you, one step at a time and only as far as it takes to stay ahead. Get a banner and a sound the moment you are outbid, when the clock runs low, and when a lot sells. Your own amount is visible only to you and the host.
+
+  Gavel records bids and winners. It does not take payment; the host and the winner settle up themselves.
+
+- **Category:** Events / Fundraising (pick the closest available)
+- **Gallery** (1200×780, in `docs/marketplace/`):
+  `gallery-1-run-an-auction.png`, `gallery-2-max-bid-and-alerts.png`, `gallery-3-sold-and-results.png`
+- **Demo video** (MP4, 40 MB limit): `.context/zoom-gavel-demo-v2.mp4` (47 seconds, 15.6 MB, recorded on the live app). Not committed to git.
+- **App icon:** `src/app/icon.png` (the gavel badge; check it meets the size Zoom asks for).
+
+## Links and support
+
+| Field | Value (replace the host with your domain) |
+|-------|-------|
+| Home URL | `https://<domain>/zoom-test` |
+| Privacy policy | `https://<domain>/privacy` |
+| Terms of use | `https://<domain>/terms` |
+| Support | `https://<domain>/support`, email `sankritya.apps@gmail.com` |
+| Documentation (add, use, remove) | `https://<domain>/guide` |
+| Event notification and deauthorization URL | `https://<domain>/api/zoom/webhook` |
+
+## Scopes and APIs, with the reason for each
+
+| Item | Why the app needs it |
+|------|----------------------|
+| `zoomapp:inmeeting` | To run inside a meeting at all. |
+| `meeting:read:meeting` | To subscribe to Zoom's `meeting.started` notification, which names the meeting's host so only they can run the auction. The app does not call the Meetings API or read participants. (Confirm on the Scopes page that this is what the scope is attached to.) |
+| `getRunningContext`, `getUserContext`, `getMeetingUUID` | Know it is in a meeting, which one, and the person's display name. |
+| `getAppContext` | Fetch Zoom's signed app context so the server can prove who the person is. |
+| `startCollaborate`, `onCollaborateChange` | Let the host open the app for everyone in the meeting (Invite all). |
+| `onRunningContextChange` | Keep the panel correct when the app moves between the side panel and a shared view. |
+| Event `app_deauthorized` | Erase a person's data when they remove the app. |
+
+Domain allow list: the production domain only. Inside Zoom the panel talks to
+its own origin (server-sent events and plain HTTPS), never to another host.
+
+## Notes for the reviewer (paste into "Release notes for reviewer")
+
+> Gavel needs no separate sign-in; Zoom authorizes it when you add it. You will
+> need a meeting you host and a second participant (a second Zoom account, or a
+> browser on the link from the host's panel).
+>
+> 1. Start a meeting as the host. Apps, search "Gavel for Zoom Meetings", Add, Authorize. The panel opens and says "You're hosting".
+> 2. Type an item and a starting bid, click Add to queue twice (two lots), then Start the first. A second participant sees the lot, a clock and a "Bidding is open" banner.
+> 3. The second participant bids. The price changes on both screens in under a second.
+> 4. The second participant taps "Set a max bid", enters an amount above the price. The host (or a third participant) bids against it: Gavel bids for the max-bid holder automatically.
+> 5. Bid past the max: the first participant gets an "outbid" banner and a sound.
+> 6. Let the clock run out: Sold appears on every screen. The host clicks "Start (next item)" to open the second lot, and "Download CSV" for the results.
+> 7. To test removal: Apps, My Apps, Remove. Zoom calls our deauthorization URL; the person's name on bids and sales becomes "Removed bidder" and their max bids are deleted.
+>
+> Scopes: `zoomapp:inmeeting` runs the app in a meeting; `meeting:read:meeting` is only used to receive `meeting.started` so the host can be verified. No meeting content, chat, audio, video or participant list is read.
+
+## Technical design (for Zoom's compliance review)
+
+**Stack.** Next.js 16 (React 19) on Vercel, functions pinned to Portland (`pdx1`).
+Postgres on Supabase (AWS us-west-2) for all state. The panel is a web app
+loaded in the Zoom webview.
+
+**Real time.** One session per meeting. Bids are accepted atomically inside
+Postgres under a row lock, so two buyers can never both win. Updates reach
+Zoom clients over server-sent events from our own origin, which hold one
+Supabase Realtime channel per session per server instance; browsers outside
+Zoom subscribe to the same private channel directly. A server-side read every
+3 seconds per live session catches anything a dropped broadcast missed. Bid to
+screen is 160 to 400 ms measured on production.
+
+**Identity.** Zoom sends `x-zoom-app-context` (and `zoomSdk.getAppContext()`
+returns the same token): AES-256-GCM encrypted with a key derived from the
+app's Client Secret. The server decrypts it, checks it, and issues a signed
+`HttpOnly; Secure; SameSite=None; Partitioned` cookie valid 6 hours. Every
+API route trusts only that cookie. The host comes from Zoom's signed
+`meeting.started` webhook (HMAC-SHA256 with the Secret Token, 5 minute
+timestamp window), stored as a hash.
+
+**Data held.** See the privacy policy. Zoom user IDs are stored only as a
+keyed hash (HMAC-SHA256, truncated), never in the clear. Screen names, the
+meeting UUID (base64url in the session key), bids, max bids, lots and results
+are stored. No email address, no payment data, no meeting content. IP
+addresses live in rate-limit counters for at most an hour; Vercel's own request
+logs hold them under Vercel's retention.
+
+**Retention and deletion.** Browser and demo sessions are deleted 24 hours
+after last activity, meeting sessions after 30 days, by an hourly database job.
+On `app_deauthorized` the app deletes the person's max bids and replaces their
+name on bids and won lots with "Removed bidder" (migration 010, tested).
+
+**Controls.** TLS 1.2+ (Vercel), HSTS, a Content Security Policy that allows
+only our own origin and the database, `frame-ancestors` limited to Zoom,
+`X-Content-Type-Options: nosniff`, strict referrer policy. All writes go
+through service-role SQL functions; the public database key can read no table
+and call no function. Rate limits live in Postgres (per IP and per bidder).
+Inputs are validated and bounded. Webhook bodies are size-limited and signed.
+
+**Testing.**
+- A 148-assertion concurrency and security suite (`npm run test:race`), run on every deploy against production: bid storms, expiry boundaries, forged identity, bid privacy, webhook verification, max-bid contests, the lot queue, app removal.
+- `scripts/stress-test.mjs`: hundreds of simulated bidders, 100 to 250 simultaneous live streams, 24 concurrent max-bid contests, queue churn, and a SQL check of the ledger afterwards. Results: zero errors and a clean ledger at every size; the database itself does a bid in about 1.4 ms.
+- Independent code reviews of the server code, the last one on 2026-10-19 (findings fixed or listed below).
+- `npm audit --omit=dev`: 0 vulnerabilities (Next.js 16.4.2).
+
+**Operations.** Secrets are Vercel environment variables, never in the repo.
+Rotation: Client Secret and webhook Secret Token are rotated in the Marketplace
+and Vercel together; the session signing secret rotates by redeploying (it
+signs only 6 hour cookies).
+
+## Known limits to be upfront about
+
+- Bidders who join from a browser link are **unverified**: their identity is the name they type. Someone who knows an unverified bidder's name could bid, or change a max bid, as them. Verified (in-Zoom) bidders are not affected. A pairing-code step would fix this; it is not built.
+- A bid exactly equal to another bidder's hidden max bid beats it (a hand bid at the ceiling wins the tie).
+- Co-hosts cannot run rounds; only the meeting's host can.
+- Payment happens outside the app, by design.
+- The panel has not been run through a full in-meeting test since the Oct 5 week's features (queue, max bid, alerts) were added.

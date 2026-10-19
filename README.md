@@ -49,9 +49,13 @@ Under the hood:
   both win.
 - **Verified identity.** Zoom tells the server who each person is and who the
   meeting host is; only the host can run rounds in their meeting.
-- **Tested.** A 133-assertion concurrency and security suite runs against the
+- **Tested.** A 148-assertion concurrency and security suite runs against the
   live site (bid storms, simultaneous Buy Now, forged identity, privacy of bid
-  amounts, max-bid contests, the queue).
+  amounts, max-bid contests, the queue, erasing a person who removes the app),
+  and a stress test drives hundreds of simulated bidders and live streams and
+  checks the ledger in SQL afterwards.
+- **Erases on request.** Remove the app from Zoom and Zoom's notice makes the
+  app delete that person's max bids and replace their name on bids and sales.
 
 ## Screenshots
 
@@ -86,8 +90,14 @@ Under the hood:
 - Tested end to end in a real Zoom meeting once (Oct 2). The Oct 5 week's
   features are verified by automated tests and browser runs on the live site,
   and still need a pass inside a real meeting, sounds especially.
+- Ready for Marketplace review, pending a few things only the owner can do
+  (a domain they own, the support address, the deauthorization URL, production
+  credentials): see `docs/marketplace-submission.md`, which holds every field
+  Zoom asks for, the reviewer's test plan and the technical design. The public
+  pages Zoom requires are built: `/privacy`, `/terms`, `/support`, `/guide`.
 - Not built yet: payment inside the app (winners pay the host outside it),
-  co-hosts running rounds, verifying browser bidders, Marketplace submission.
+  co-hosts running rounds, verifying browser bidders (they bid under a typed
+  name, so a name can be impersonated), Marketplace submission itself.
 
 ## Local setup
 
@@ -185,6 +195,18 @@ bids are marked as such in the ledger. A ceiling is private: a verified
 bidder gets their own back from the server, an unverified bidder's browser
 remembers it, and nobody else ever sees one.
 
+Catching missed pushes. Supabase's realtime service can drop a broadcast after
+a long quiet spell (seen on production: a bid made four seconds after the first
+stream opened never arrived). So each live room also reads its session every 3
+seconds (10 when idle) with the service role and emits whatever the broadcasts
+missed, one read per room however many people watch. The same read closes a
+round whose clock ran out. A stream is refused for a session nobody created.
+
+Removal. Zoom's `app_deauthorized` notice (same signed webhook) calls
+`purge_zoom_user` with the keyed hash of the Zoom id: max bids are deleted,
+names on bids and on won lots become "Removed bidder", a host claim is
+dropped. The record of each sale stays, naming nobody.
+
 Lot queue. The host lines up lots in advance (`/api/session/[key]/queue`,
 up to 30) and starts the next with one call that pops it and opens the
 round atomically. Only the host can read or change the queue; everyone else
@@ -249,6 +271,20 @@ Expiry. A pg_cron job (`gavel-expire-sessions`, hourly) runs
 `expire_sessions()`: demo and join-link sessions are deleted 24h after
 their last activity, meeting sessions after 30 days, never while a round
 is live. Stale rate-limit buckets go with them.
+
+Stress testing. `scripts/stress-test.mjs` is the load companion to the race
+suite. Point it at a local `next start` (it spreads load over invented client
+addresses, which Vercel would overwrite): `BASE_URL=http://127.0.0.1:5180 node
+scripts/stress-test.mjs`. It runs a fan-out (every open stream must get one
+bid, quickly), a load phase (sessions x bidders placing bids and max bids while
+rounds expire, then SQL checks that ledger amounts rise, prices and leaders
+match, and each round is recorded once), 24 simultaneous max-bid contests
+(highest ceiling must lead at runner up plus one step), queue churn, and a
+lost-push check. Add `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` for the
+SQL checks; sessions are named `stress-*` and removed afterwards. Measured on
+production: 100 live streams all got a bid in about 400 ms, bids took 170 to
+230 ms typically, and the database does a bid in about 1.4 ms, so the ceiling
+seen from a laptop (about 58 bids a second) is the laptop's network, not the app.
 
 Testing. `BASE_URL=http://127.0.0.1:5173 npm run test:race` runs the
 concurrency suite (bid storms, identical amounts, expiry boundary,

@@ -1,0 +1,128 @@
+.doc {
+  min-height: 100vh;
+  background: #fbf7ef;
+  color: #2a211b;
+  font-family: var(--font-body), ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 28px;
+  width: min(100% - 40px, 760px);
+  margin: 0 auto;
+  padding: 26px 0 8px;
+}
+
+.doc-brand {
+  font-family: var(--font-display), 'Iowan Old Style', Georgia, serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: inherit;
+  text-decoration: none;
+}
+
+.doc-head nav {
+  display: flex;
+  gap: 22px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.doc-head nav a {
+  color: #6b5b4e;
+  text-underline-offset: 4px;
+}
+
+.doc-body {
+  width: min(100% - 40px, 760px);
+  margin: 0 auto;
+  padding: 34px 0 80px;
+}
+
+.doc-body h1 {
+  margin: 0;
+  font-family: var(--font-display), 'Iowan Old Style', Georgia, serif;
+  font-size: clamp(38px, 7vw, 54px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.doc-lead {
+  margin: 16px 0 0;
+  font-size: 20px;
+  color: #6b5b4e;
+}
+
+.doc-body h2 {
+  margin: 44px 0 4px;
+  font-family: var(--font-display), 'Iowan Old Style', Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.doc-body h3 {
+  margin: 24px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.doc-body p,
+.doc-body ul,
+.doc-body ol {
+  margin: 10px 0 0;
+}
+
+.doc-body ul,
+.doc-body ol {
+  padding-left: 22px;
+}
+
+.doc-body li + li {
+  margin-top: 6px;
+}
+
+.doc-body a {
+  color: #2d66f6;
+  text-underline-offset: 3px;
+}
+
+.doc-body code {
+  font-family: var(--font-numeral), ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.doc-table {
+  width: 100%;
+  margin-top: 14px;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.doc-table th,
+.doc-table td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid rgba(42, 33, 27, 0.14);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-table th {
+  font-weight: 700;
+  color: #6b5b4e;
+}
+
+.doc-foot {
+  margin-top: 56px !important;
+  padding-top: 18px;
+  border-top: 1px solid rgba(42, 33, 27, 0.14);
+  font-size: 15px;
+  color: #6b5b4e;
+}
