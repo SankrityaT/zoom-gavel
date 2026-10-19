@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
+import { getRawState } from './server'
 import {
   toLeaderboard,
   toSessionInfo,
@@ -17,6 +18,14 @@ import {
 // Uses the anon key: the private session:<key> topics are readable by
 // anyone holding the key (migration 004), so no elevated role is needed on
 // a long-lived socket.
+//
+// Broadcasts are not guaranteed: after a long quiet spell Supabase's realtime
+// service can take a while to wake, and anything sent meanwhile is dropped
+// without a trace (seen on the live site: a bid made four seconds after the
+// first stream opened never arrived). So each room also reads the session
+// itself every few seconds and emits whatever the broadcasts missed. One read
+// per room per interval, however many people are watching. The read also
+// closes a round whose clock ran out, so it ends on time for everyone.
 
 export type HubEvent =
   | { type: 'session'; session: SessionInfo; leaderboard: LeaderEntry[] }
@@ -24,8 +33,14 @@ export type HubEvent =
 
 type Listener = (event: HubEvent) => void
 
+const POLL_OPEN_MS = 3_000
+const POLL_IDLE_MS = 10_000
+
 type Room = {
   channel: RealtimeChannel | null
+  /** updated_at of the newest session row emitted, by broadcast or by read. */
+  lastUpdatedAt: string
+  pollTimer: ReturnType<typeof setTimeout> | null
   listeners: Set<Listener>
   ready: Promise<boolean>
   closed: boolean
@@ -51,6 +66,7 @@ function getClient() {
 function dropRoom(sessionKey: string, room: Room) {
   if (room.closed) return
   room.closed = true
+  if (room.pollTimer !== null) clearTimeout(room.pollTimer)
   if (rooms.get(sessionKey) === room) rooms.delete(sessionKey)
   const channel = room.channel
   if (!channel) return
@@ -68,7 +84,37 @@ function openRoom(sessionKey: string): Room {
   const emit = (event: HubEvent) => {
     for (const listener of listeners) listener(event)
   }
-  const room: Room = { channel: null, listeners, ready: Promise.resolve(false), closed: false }
+  const room: Room = {
+    channel: null,
+    lastUpdatedAt: '',
+    pollTimer: null,
+    listeners,
+    ready: Promise.resolve(false),
+    closed: false,
+  }
+
+  async function poll() {
+    room.pollTimer = null
+    if (room.closed) return
+    let next = POLL_IDLE_MS
+    try {
+      const raw = await getRawState(sessionKey)
+      if (raw && !room.closed) {
+        next = raw.session.status === 'open' ? POLL_OPEN_MS : POLL_IDLE_MS
+        if (raw.session.updated_at > room.lastUpdatedAt) {
+          room.lastUpdatedAt = raw.session.updated_at
+          emit({
+            type: 'session',
+            session: toSessionInfo(raw.session),
+            leaderboard: toLeaderboard(raw.leaderboard ?? [], raw.session.current_bid),
+          })
+        }
+      }
+    } catch {
+      // A failed read is retried on the next turn; the broadcasts still flow.
+    }
+    if (!room.closed) room.pollTimer = setTimeout(() => void poll(), next)
+  }
 
   room.ready = (async () => {
     const pending = leaving.get(sessionKey)
@@ -85,6 +131,7 @@ function openRoom(sessionKey: string): Room {
             leaderboard?: LeaderRow[]
           }
           if (payload?.table === 'auction_sessions' && payload.record?.uuid === sessionKey) {
+            if (payload.record.updated_at > room.lastUpdatedAt) room.lastUpdatedAt = payload.record.updated_at
             emit({
               type: 'session',
               session: toSessionInfo(payload.record),
@@ -99,6 +146,7 @@ function openRoom(sessionKey: string): Room {
         if (status === 'SUBSCRIBED') {
           subscribed = true
           resolve(true)
+          if (room.pollTimer === null) room.pollTimer = setTimeout(() => void poll(), POLL_OPEN_MS)
           return
         }
         // A first join can fail transiently and supabase-js rejoins on its

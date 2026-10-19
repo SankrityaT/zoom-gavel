@@ -139,16 +139,17 @@ await scenario('S3', 'bid after expiry', async () => {
 await scenario('S4', 'bids at the expiry boundary', async () => {
   const k = key()
   await init(k)
-  const s = await start(k, { seconds: 5, extendWindowSeconds: 0 })
+  const s = await start(k, { seconds: 7, extendWindowSeconds: 0 })
   const endsAt = new Date(s.json.state.session.endsAt).getTime()
   const offset = new Date(s.json.state.serverNow).getTime() - Date.now()
   const fireAt = (deltaMs) => endsAt + deltaMs - offset
   // Verdicts are judged at arrival on the server, so "before" bids need a
-  // margin larger than request latency; the invariant under test is that
+  // margin larger than request latency (a bid is several database round trips,
+  // over a slow link well past a second); the invariant under test is that
   // nothing accepted lands after endsAt and nothing after it is accepted.
   const plan = [
-    [-1200, 150, 'b1'],
-    [-800, 175, 'b2'],
+    [-2600, 150, 'b1'],
+    [-2000, 175, 'b2'],
     [150, 200, 'b3'],
     [400, 225, 'b4'],
   ]

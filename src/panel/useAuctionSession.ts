@@ -152,7 +152,7 @@ export function useAuctionSession(
   const latestUpdatedAt = useRef('')
   const latestState = useRef<SessionState | null>(null)
   const offsetMs = useRef(0)
-  const endsAtRef = useRef<string | null>(null)
+  const endsAtRef = useRef<{ roundNo: number; endsAt: string | null } | null>(null)
   const anonKeyRef = useRef<string | null>(null)
   const ownBid = useRef<OwnBid | null>(null)
   const ownBidLoaded = useRef(false)
@@ -190,12 +190,14 @@ export function useAuctionSession(
     [sessionKey],
   )
 
-  const noteExtension = useCallback((nextEndsAt: string | null, status: string) => {
+  // An extension is a later deadline within the same round. A new round has
+  // a later deadline too, but it is a new lot, not more time on the old one.
+  const noteExtension = useCallback((nextEndsAt: string | null, status: string, roundNo: number) => {
     const prev = endsAtRef.current
-    if (status === 'open' && prev && nextEndsAt && nextEndsAt > prev) {
+    if (status === 'open' && prev?.endsAt && prev.roundNo === roundNo && nextEndsAt && nextEndsAt > prev.endsAt) {
       setExtendedAt(Date.now())
     }
-    endsAtRef.current = nextEndsAt
+    endsAtRef.current = { roundNo, endsAt: nextEndsAt }
   }, [])
 
   const applyState = useCallback(
@@ -212,7 +214,7 @@ export function useAuctionSession(
         return
       }
       latestUpdatedAt.current = next.session.updatedAt
-      noteExtension(next.session.endsAt, next.session.status)
+      noteExtension(next.session.endsAt, next.session.status, next.session.roundNo)
       const merged = reveal(next, current)
       latestState.current = merged
       setSync({ phase: 'live', state: merged })
@@ -229,7 +231,7 @@ export function useAuctionSession(
       if (!current) return false
       if (session.updatedAt <= latestUpdatedAt.current) return false
       latestUpdatedAt.current = session.updatedAt
-      noteExtension(session.endsAt, session.status)
+      noteExtension(session.endsAt, session.status, session.roundNo)
       // A max bid belongs to one round; never show it against the next.
       const viewer =
         session.roundNo === current.session.roundNo ? current.viewer : { ...current.viewer, maxBid: null }
