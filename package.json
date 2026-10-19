@@ -12,9 +12,9 @@
     "test:race": "node scripts/race-test.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.116.0",
-    "@zoom/appssdk": "^0.16.41",
-    "next": "16.3.3",
+    "@supabase/supabase-js": "^2.118.0",
+    "@zoom/appssdk": "^0.16.42",
+    "next": "16.4.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -23,7 +23,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.4.2",
     "typescript": "^6.0.3"
   },
   "engines": {
