@@ -17,7 +17,8 @@ import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 
 const SESSION_SECRET = process.env.SESSION_SECRET
-const CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET
+// The first of the configured Client Secrets is the one that belongs to the client id.
+const CLIENT_SECRET = (process.env.ZOOM_CLIENT_SECRET ?? '').split(',')[0].trim()
 if (!SESSION_SECRET || !CLIENT_SECRET) {
   console.error('SESSION_SECRET and ZOOM_CLIENT_SECRET are required')
   process.exit(2)

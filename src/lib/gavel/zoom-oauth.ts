@@ -6,6 +6,8 @@
 //
 // The bases are overridable so a test can stand in for Zoom.
 
+import { clientSecretList } from './identity'
+
 // The bases can be pointed at a stand-in for Zoom, but only when a test says so
 // explicitly. In production a stray variable would send the client secret
 // somewhere else, so without the opt-in they are ignored.
@@ -19,7 +21,7 @@ export const OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 export type OAuthState = { state: string; verifier: string; returnTo: string; exp: number }
 
 export function oauthConfigured() {
-  return Boolean(process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET && process.env.SESSION_SECRET)
+  return Boolean(process.env.ZOOM_CLIENT_ID && clientSecretList().length > 0 && process.env.SESSION_SECRET)
 }
 
 // Where to come back to: a path on this site, and nothing else. Anything that
@@ -88,7 +90,8 @@ export async function whoSignedIn(
   request: Request,
 ): Promise<{ id: string; name: string } | null> {
   const clientId = process.env.ZOOM_CLIENT_ID as string
-  const clientSecret = process.env.ZOOM_CLIENT_SECRET as string
+  // The first configured secret belongs to the app ZOOM_CLIENT_ID names.
+  const clientSecret = clientSecretList()[0]
   const tokenResponse = await fetch(`${OAUTH_BASE()}/oauth/token`, {
     method: 'POST',
     headers: {

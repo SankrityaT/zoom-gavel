@@ -21,7 +21,10 @@ const SESSION_SECRET = process.env.SESSION_SECRET ?? null
 const WEBHOOK_TOKEN = (process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? '').split(',')[0].trim() || null
 // Optional: a second token the server was also given, to prove either app can verify.
 const WEBHOOK_TOKEN_2 = process.env.WEBHOOK_TOKEN_2 ?? null
-const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET ?? null
+// The server may hold several Client Secrets (Development and Production apps, comma separated); the first is the main one.
+const ZOOM_CLIENT_SECRET = (process.env.ZOOM_CLIENT_SECRET ?? '').split(',')[0].trim() || null
+// Optional: another secret the server was also given, to prove either app's context is accepted.
+const ZOOM_CLIENT_SECRET_2 = process.env.ZOOM_CLIENT_SECRET_2 ?? null
 
 let failures = 0
 const results = []
@@ -845,9 +848,9 @@ if (SESSION_SECRET) {
 if (ZOOM_CLIENT_SECRET) {
   // A Zoom app-context token, sealed the way the Zoom client seals it:
   // base64 of [ivLen][iv][aadLen LE16][aad][cipherLen LE32][cipher][tag].
-  const zoomContext = (payload) => {
+  const zoomContext = (payload, secret = ZOOM_CLIENT_SECRET) => {
     const iv = randomBytes(12)
-    const cipher = createCipheriv('aes-256-gcm', createHash('sha256').update(ZOOM_CLIENT_SECRET).digest(), iv)
+    const cipher = createCipheriv('aes-256-gcm', createHash('sha256').update(secret).digest(), iv)
     const sealed = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()])
     const head = Buffer.alloc(1 + 12 + 2 + 4)
     head.writeUInt8(12, 0); iv.copy(head, 1); head.writeUInt16LE(0, 13); head.writeUInt32LE(sealed.length, 15)
@@ -877,6 +880,12 @@ if (ZOOM_CLIENT_SECRET) {
     check('S19 missing token -> 400', empty.status === 400, String(empty.status))
     const cross = await fetch(`${BASE_URL}/api/identity`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ context: token }) })
     check('S19 cross-site post -> 403', cross.status === 403, String(cross.status))
+    if (ZOOM_CLIENT_SECRET_2) {
+      const second = await identity(zoomContext({ typ: 'meeting', uid: 'sdkUser2', mid, ts: Date.now(), exp: Date.now() + 120_000 }, ZOOM_CLIENT_SECRET_2))
+      check('S19 a context sealed with the other configured secret is accepted too', second.status === 200, String(second.status))
+      const stranger = await identity(zoomContext({ typ: 'meeting', uid: 'sdkUser3', mid, ts: Date.now(), exp: Date.now() + 120_000 }, `${ZOOM_CLIENT_SECRET_2}-not-configured`))
+      check('S19 one sealed with a secret that is in neither is refused', stranger.status === 401, String(stranger.status))
+    }
   })
 } else {
   console.log('SKIP  S19 SDK identity (set ZOOM_CLIENT_SECRET to run)')
