@@ -12,7 +12,14 @@ const MAX_BODY_BYTES = 64 * 1024
 // matches readViewer, so the host's own identity cookie (uid from the
 // decrypted app context) resolves to the same bidder key.
 export async function POST(request: Request) {
-  const secretToken = process.env.ZOOM_WEBHOOK_SECRET_TOKEN
+  // One Secret Token per Marketplace app: the Development app and the Production
+  // app each have their own, and both send events here. List them separated by
+  // commas; an event must verify against one of them.
+  const secretTokens = (process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? '')
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+  const secretToken = secretTokens[0]
   const sessionSecret = process.env.SESSION_SECRET
   if (!secretToken || !sessionSecret) {
     return NextResponse.json({ error: 'webhook not configured' }, { status: 503 })
@@ -30,13 +37,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'body too large' }, { status: 413 })
   }
 
-  const valid = await verifyZoomWebhook(
-    rawBody,
-    request.headers.get('x-zm-signature'),
-    request.headers.get('x-zm-request-timestamp'),
-    secretToken,
-  )
-  if (!valid) return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
+  // The token that verified the event is the one that answers its challenge.
+  let matchedToken: string | null = null
+  for (const candidate of secretTokens) {
+    if (
+      await verifyZoomWebhook(
+        rawBody,
+        request.headers.get('x-zm-signature'),
+        request.headers.get('x-zm-request-timestamp'),
+        candidate,
+      )
+    ) {
+      matchedToken = candidate
+      break
+    }
+  }
+  if (matchedToken === null) return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
 
   let event: ZoomWebhookEvent
   try {
@@ -50,7 +66,7 @@ export async function POST(request: Request) {
     if (typeof plainToken !== 'string' || !plainToken) {
       return NextResponse.json({ error: 'plainToken required' }, { status: 400 })
     }
-    return NextResponse.json({ plainToken, encryptedToken: await hmacHex(secretToken, plainToken) })
+    return NextResponse.json({ plainToken, encryptedToken: await hmacHex(matchedToken, plainToken) })
   }
 
   if (event.event === 'meeting.started') {

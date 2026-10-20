@@ -1,0 +1,42 @@
+name: Security scans
+
+# Static analysis (CodeQL) and a dependency audit on every push to main, every
+# pull request, and weekly, so a new advisory in a library is noticed even when
+# nobody has touched the code.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 6 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # Only what ships to production; the lint tooling is a development dependency.
+      - run: npm audit --omit=dev --audit-level=high

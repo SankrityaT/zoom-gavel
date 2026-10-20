@@ -17,7 +17,10 @@ if (!BASE_URL) {
   process.exit(2)
 }
 const SESSION_SECRET = process.env.SESSION_SECRET ?? null
-const WEBHOOK_TOKEN = process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? null
+// The server may hold several tokens (one per Marketplace app, comma separated); the first is the main one.
+const WEBHOOK_TOKEN = (process.env.ZOOM_WEBHOOK_SECRET_TOKEN ?? '').split(',')[0].trim() || null
+// Optional: a second token the server was also given, to prove either app can verify.
+const WEBHOOK_TOKEN_2 = process.env.WEBHOOK_TOKEN_2 ?? null
 const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET ?? null
 
 let failures = 0
@@ -466,6 +469,13 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     check('S14b forged signature -> 401', forged.status === 401, String(forged.status))
     const stale = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { ts: Math.floor(Date.now() / 1000) - 600 })
     check('S14c stale timestamp -> 401', stale.status === 401, String(stale.status))
+    if (WEBHOOK_TOKEN_2) {
+      const second = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { token: WEBHOOK_TOKEN_2 })
+      const sj = await second.json()
+      check('S14c2 a second configured token verifies, and answers with itself', second.status === 200 && sj.encryptedToken === createHmac('sha256', WEBHOOK_TOKEN_2).update(plainToken).digest('hex'), String(second.status))
+      const third = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { token: `${WEBHOOK_TOKEN_2}-nope` })
+      check('S14c3 a token that is in neither is refused', third.status === 401, String(third.status))
+    }
 
     const mid = `race-mid-${randomBytes(4).toString('hex')}`
     const k = meetingKey(mid)
