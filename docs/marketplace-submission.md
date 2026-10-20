@@ -7,27 +7,32 @@ against Zoom's published review docs on 2026-10-19:
 [common rejection issues](https://developers.zoom.us/docs/distribute/app-submission/common-rejection-issues/),
 [security requirements](https://developers.zoom.us/docs/distribute/security-requirements/).
 
-## Where it stands (2026-10-20)
+## Where it stands (2026-10-20, end of day)
 
-Done in the Marketplace app, by Aside, nothing submitted:
+Zoom's Publish page reads "Ready for submission". Nothing has been submitted.
 
-- Scopes: `zoomapp:inmeeting`, `meeting:read:meeting`, `meeting:read:participant` (Zoom required it for the role-change event), `user:read:user` (browser sign-in).
-- Events, Development and Production: Start Meeting, Participant role changed. Production endpoint `https://zoomgavel.vercel.app/api/zoom/webhook` validated.
-- OAuth allow list includes `https://zoomgavel.vercel.app/api/oauth/zoom/callback`.
-- Listing: short and long description, icon, three gallery images (in `docs/marketplace/`), category Event Management, industry Other.
-- Technical Design: technology stack, architecture diagram, the SSDLC, SAST/DAST and penetration-test answers, the three security answers, and the evidence PDFs.
-- The webhook Secret Token was rotated on 2026-10-20 (Zoom shares one token across Development and Production) and is in Vercel production as `ZOOM_WEBHOOK_SECRET_TOKEN`. `ZOOM_CLIENT_ID` (Development app) is set, which turned browser sign-in on. The variable accepts several comma separated tokens, in case the two apps ever get different ones.
+Done, by Aside, each saved and re-opened to confirm:
 
-Still open, in Zoom's wording, and why:
+- Domain: `gavel-app.sankrityat.com` (DNS on Squarespace nameservers, Vercel certificate). `sankrityat.com` is **verified** with Zoom by a TXT record. Every old address (`vercel.app`, the old tunnel) is out of the Marketplace app.
+- Scopes: `zoomapp:inmeeting`, `meeting:read:meeting`, `meeting:read:participant`, `user:read:user`.
+- Events (Development and Production): Start Meeting, Participant role changed. Production endpoint `https://gavel-app.sankrityat.com/api/zoom/webhook` validated.
+- OAuth redirect URL and allow list: only `https://gavel-app.sankrityat.com/api/oauth/zoom/callback`.
+- Listing: descriptions, icon, three gallery images, category Event Management, industry Other; Privacy, Terms, Support and Documentation links on the new domain; the privacy acknowledgment ticked.
+- EU: "Available in the EU" unticked, so no business, bank or ID details are required.
+- Technical Design: technology stack, architecture diagram, security answers and the two evidence PDFs.
+- Release notes for the reviewer (1,839 of 2,000 characters).
 
-| Item | Needs | Who |
-|------|-------|-----|
-| Privacy Policy, Terms of Use, Support and Documentation URLs | A domain you own (Zoom validates ownership and discourages `vercel.app`). `gavel-app.sankrityat.com` is live (DNS moved to Squarespace nameservers on 2026-10-20, certificate issued, `SITE` and the metadata base switched). The Marketplace app still has to be pointed at it: Home URL, domain allow list, OAuth allow list, webhook endpoint, and the four links. | You |
-| Privacy Policy acknowledgment is required | A checkbox only you can tick | You |
-| EU & Discoverability (9 business, bank and ID items) | Either untick "Available in the EU" (no business details needed) or provide a trader's name, address, email, phone, bank name and last 4 digits, a trade register number, an ID document and the compliance declaration | You |
-| Switch to the **Production** credentials | Production Client Secret into `ZOOM_CLIENT_SECRET` and its Client ID into `ZOOM_CLIENT_ID` in Vercel, then redeploy | You or Aside |
-| A real in-meeting run of `docs/in-meeting-test.md`, including co-host and browser sign-in | The Zoom desktop app and two other people | You |
-| The one sign-in test Aside could not do: sign in with Zoom in your own browser | Your Zoom password | You |
+Server side:
+
+- `ZOOM_WEBHOOK_SECRET_TOKEN` was rotated on 2026-10-20 (Zoom shares one token across both apps).
+- `ZOOM_CLIENT_SECRET` holds two secrets, `development,production`. The server tries each when reading an identity, so both apps work. The first belongs to `ZOOM_CLIENT_ID` for Sign in with Zoom, which is the **Development** app (`VPpRXuSfudZQULIWyrYA`) for now.
+
+Left, and why only the owner can do them:
+
+1. Tick two attestations on the Publish page: "I agree to Zoom's Marketplace developer agreement" and "I, the vendor, represent and warrant that all information and statements provided on this form are true and correct."
+2. Before submitting, do the two real tests in `docs/in-meeting-test.md`: Sign in with Zoom in your own browser (needs your Zoom password), and the co-host step in a real meeting. Reviewers will exercise both.
+3. At submission, flip Sign in with Zoom to the Production app: set `ZOOM_CLIENT_ID` to `WmyMtZdnSDarmip4c7vDMQ` and put the Production secret first in `ZOOM_CLIENT_SECRET`, then redeploy. Do this after test 2, because the Development app's sign-in stops working once it is flipped.
+4. Press Submit.
 
 ## Listing
 
