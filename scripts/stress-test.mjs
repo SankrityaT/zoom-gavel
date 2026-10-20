@@ -261,7 +261,7 @@ async function load() {
     )
     select
       (select count(*) from b)                                        as bids,
-      (select count(*) from b where prev is not null and amount <= prev) as not_increasing,
+      (select count(*) from b where prev is not null and (amount < prev or (amount = prev and not auto))) as not_increasing,
       (select count(*) from auction_sessions s where s.uuid like '${prefix}%'
          and s.current_bid is distinct from (select max(amount) from auction_bids x where x.session_uuid = s.uuid and x.round_no = s.round_no)
          and exists (select 1 from auction_bids x where x.session_uuid = s.uuid and x.round_no = s.round_no)) as price_mismatch,
@@ -283,7 +283,7 @@ async function load() {
   }
   const r = rows[0]
   console.log(`  ledger: ${r.bids} rows across ${SESSIONS} sessions, ${r.connections} database connections open`)
-  check('ledger amounts rise strictly within each round', Number(r.not_increasing) === 0, `${r.not_increasing} violations`)
+  check('ledger amounts never fall within a round (a tie is only ever an automatic bid)', Number(r.not_increasing) === 0, `${r.not_increasing} violations`)
   check('every session price equals its highest bid', Number(r.price_mismatch) === 0, `${r.price_mismatch}`)
   check('every session leader placed the last bid', Number(r.leader_mismatch) === 0, `${r.leader_mismatch}`)
   check('exactly one round record per session', Number(r.round_rows) === SESSIONS && Number(r.rounds_sessions) === SESSIONS, `${r.round_rows} rows`)

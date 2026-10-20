@@ -36,6 +36,13 @@ export default function Support() {
         Zoom who you are. If the host is signed in on more than one device, use the one that started the meeting.
       </p>
 
+      <h3>I’m a co-host but I have no host controls</h3>
+      <p>
+        Zoom tells Gavel about a co-host at the moment the role is given. If you were made co-host before you opened Gavel and it still
+        shows no controls, ask the host to remove your co-host role and give it again (Participants, More, Make co-host), then close and
+        reopen Gavel from Apps.
+      </p>
+
       <h3>People joining from a link can bid, but I can’t see their amounts</h3>
       <p>
         That is by design. Each person’s bid amount is private to them and the host. Everyone else sees only the ranking and the

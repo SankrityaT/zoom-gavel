@@ -1,3 +1,4 @@
+import { guestSecret } from './guest'
 import type { BidReason, QueueItem, RoundReason, RoundResult as RoundRecord, SessionState } from './types'
 
 // The one place the browser talks to /api/session/[key]. Cookies ride along
@@ -41,7 +42,7 @@ export async function postBid(
   amount: number,
   bidderName: string,
 ): Promise<BidResult> {
-  const res = await postJson(sessionUrl(sessionKey), { amount, bidderId: bidderName })
+  const res = await postJson(sessionUrl(sessionKey), { amount, bidderId: bidderName, bidderSecret: guestSecret() })
   if (res.status === 200 || res.status === 409) return (await res.json()) as BidResult
   if (res.status === 429) return { accepted: false, reason: 'rate_limited' }
   throw new Error(`bid failed (${res.status})`)
@@ -107,7 +108,11 @@ export async function postMaxBid(
   amount: number | null,
   bidderName: string,
 ): Promise<MaxResult> {
-  const res = await postJson(sessionUrl(sessionKey, '/max'), { amount, bidderId: bidderName })
+  const res = await postJson(sessionUrl(sessionKey, '/max'), {
+    amount,
+    bidderId: bidderName,
+    bidderSecret: guestSecret(),
+  })
   if (res.status === 200 || res.status === 409) return (await res.json()) as MaxResult
   if (res.status === 429) return { ok: false, reason: 'rate_limited' }
   throw new Error(`max bid failed (${res.status})`)

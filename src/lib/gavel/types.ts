@@ -138,7 +138,10 @@ export type RoundResult = {
 export type ViewerInfo = {
   verified: boolean
   bidderKey: string | null
+  /** The meeting's host, or a co-host Zoom has named: the same powers. */
   isHost: boolean
+  /** True when the powers come from being a co-host. */
+  isCohost: boolean
   canControl: boolean
   inThisMeeting: boolean
   /** This viewer's own max bid for the round. Verified viewers only; an

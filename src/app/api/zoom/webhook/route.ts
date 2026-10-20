@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { bidderKey, meetingSessionKey } from '@/lib/gavel/auth'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
-import { purgeZoomUser, setMeetingHost } from '@/lib/gavel/server'
+import { purgeZoomUser, setCohost, setMeetingHost } from '@/lib/gavel/server'
 import { hmacHex, verifyZoomWebhook, type ZoomWebhookEvent } from '@/lib/gavel/zoom-webhook'
 
 const MAX_BODY_BYTES = 64 * 1024
@@ -64,6 +64,33 @@ export async function POST(request: Request) {
       await setMeetingHost(meetingSessionKey(uuid), hostKey)
     } catch (error) {
       console.error('webhook meeting.started failed:', error)
+      return NextResponse.json({ error: 'internal error' }, { status: 500 })
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  // Someone's role in the meeting changed. Zoom's app context carries no role,
+  // so this signed notice is how the server learns of a co-host. Only the
+  // Zoom user id (when they are signed in) and the new role are used; the rest
+  // of the participant record is ignored.
+  if (event.event === 'meeting.participant_role_changed') {
+    const uuid = event.payload?.object?.uuid
+    const participant = event.payload?.object?.participant
+    const userId = participant?.participant_user_id
+    if (typeof uuid !== 'string' || !uuid || typeof participant?.new_role !== 'string') {
+      return NextResponse.json({ error: 'uuid and new_role required' }, { status: 400 })
+    }
+    // Guests who are not signed in have no user id: nothing to record.
+    if (typeof userId !== 'string' || !userId) return NextResponse.json({ ok: true, ignored: 'no user id' })
+    const on = participant.new_role === 'co-host' || participant.new_role === 'host'
+    // Zoom retries, so notices can arrive out of order: the database keeps the
+    // newest by Zoom's own timestamp and ignores an older one.
+    const eventTs = typeof event.event_ts === 'number' && Number.isFinite(event.event_ts) ? Math.trunc(event.event_ts) : Date.now()
+    try {
+      const outcome = await setCohost(meetingSessionKey(uuid), await bidderKey(`zoom:${userId}`, sessionSecret), on, eventTs)
+      if (!outcome.ok) console.warn('co-host notice not recorded:', outcome.reason)
+    } catch (error) {
+      console.error('webhook participant_role_changed failed:', error)
       return NextResponse.json({ error: 'internal error' }, { status: 500 })
     }
     return NextResponse.json({ ok: true })

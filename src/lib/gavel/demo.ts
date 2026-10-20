@@ -36,11 +36,19 @@ export function describeError(error: unknown) {
   }
 }
 
-// Public identity for unverified bidders: a non-secret hash of the
-// client-chosen name. Isomorphic so the browser can recognise its own bids.
-export async function anonBidderKey(bidderName: string) {
+// Public identity for unverified bidders: a hash of the client-chosen name
+// and, when the browser has one, its private guest secret. The secret never
+// leaves the browser except to the server over HTTPS and is not in the hash's
+// output, so nobody can bid, or change a max bid, as a guest they have only
+// seen on the leaderboard. Without a secret (old clients, tools) it is the
+// name alone, a separate set of identities that no secret-bearing guest shares.
+// Isomorphic so the browser can recognise its own bids.
+export async function anonBidderKey(bidderName: string, secret?: string | null) {
   const digest = new Uint8Array(
-    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`anon:${bidderName}`)),
+    await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(secret ? `anon:${bidderName}|${secret}` : `anon:${bidderName}`),
+    ),
   )
   return 'a' + Array.from(digest.slice(0, 7), (b) => b.toString(16).padStart(2, '0')).join('')
 }

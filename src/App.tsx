@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import AuctionPanel from './panel/AuctionPanel'
 import TransportProbe from './panel/TransportProbe'
+import SignInBar, { useBrowserSignIn } from './panel/SignInBar'
 import { describeError, toSessionKey } from '@/lib/gavel/demo'
 import type { CheckState } from './zoom'
 import {
@@ -173,14 +174,18 @@ function App() {
 
   // Unique-enough bidder identity: readable name plus a stable
   // participant-scoped suffix so duplicate screen names stay distinct.
+  // Outside the Zoom client a person can sign in with Zoom; their Zoom name
+  // then replaces "Guest".
+  const signIn = useBrowserSignIn(check.phase !== 'checking' && !diagnostics)
+  const signedName = signIn.me?.signedIn ? signIn.me.name : null
   const bidderId = useMemo(() => {
-    const name = diagnostics?.user?.screenName?.trim() || 'Guest'
+    const name = diagnostics?.user?.screenName?.trim() || signedName || 'Guest'
     const suffix =
       diagnostics?.user?.participantUUID?.slice(0, 6) ??
       fallbackKey?.slice(-6) ??
       'local'
     return `${name} · ${suffix}`
-  }, [diagnostics, fallbackKey])
+  }, [diagnostics, fallbackKey, signedName])
 
   const readiness = [
     {
@@ -236,14 +241,19 @@ function App() {
           <p className="gavel-loading">Opening Gavel…</p>
         ) : (
           sessionKey && (
-            <AuctionPanel
-              key={sessionKey}
-              sessionKey={sessionKey}
-              bidderName={bidderId}
-              inZoom={Boolean(diagnostics)}
-              roleHint={diagnostics?.user?.role ?? null}
-              onInviteMeeting={isMeeting ? inviteMeeting : undefined}
-            />
+            <>
+              {!diagnostics && (
+                <SignInBar me={signIn.me} failed={signIn.failed} signOut={signIn.signOut} />
+              )}
+              <AuctionPanel
+                key={sessionKey}
+                sessionKey={sessionKey}
+                bidderName={bidderId}
+                inZoom={Boolean(diagnostics)}
+                roleHint={diagnostics?.user?.role ?? null}
+                onInviteMeeting={isMeeting ? inviteMeeting : undefined}
+              />
+            </>
           )
         )}
       </div>

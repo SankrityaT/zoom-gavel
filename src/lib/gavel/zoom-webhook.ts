@@ -59,9 +59,17 @@ export async function verifyZoomWebhook(
 
 export type ZoomWebhookEvent = {
   event?: string
+  /** Milliseconds since the epoch, when Zoom produced the event. */
+  event_ts?: number
   payload?: {
     plainToken?: string
-    object?: { uuid?: string; host_id?: string; id?: string | number }
+    object?: {
+      uuid?: string
+      host_id?: string
+      id?: string | number
+      /** meeting.participant_role_changed: who changed, and to what. */
+      participant?: { participant_user_id?: string; old_role?: string; new_role?: string }
+    }
     /** app_deauthorized: the person who removed the app. */
     user_id?: string
   }

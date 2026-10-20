@@ -135,6 +135,7 @@ function toState(
       verified: true,
       bidderKey: SELF.key,
       isHost: viewer === 'host',
+      isCohost: false,
       canControl: viewer === 'host',
       inThisMeeting: true,
       maxBid,

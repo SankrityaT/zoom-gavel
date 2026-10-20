@@ -15,6 +15,7 @@ import {
   type StartRoundInput,
 } from '@/lib/gavel/client-api'
 import { DEMO_LOT_NAME, DEMO_OPENING_BID, anonBidderKey, describeError } from '@/lib/gavel/demo'
+import { guestSecret } from '@/lib/gavel/guest'
 import {
   toLeaderboard,
   toSessionInfo,
@@ -433,7 +434,7 @@ export function useAuctionSession(
 
   useEffect(() => {
     let active = true
-    void anonBidderKey(bidderName).then((k) => {
+    void anonBidderKey(bidderName, guestSecret()).then((k) => {
       if (!active) return
       anonKeyRef.current = k
       setAnonKey(k)

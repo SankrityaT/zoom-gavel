@@ -62,7 +62,14 @@ You need three people or devices:
 11. **Mute.** A bidder taps the speaker icon: no further sounds.
 12. **Leave the panel open 5+ minutes** once. Streams recycle every 270 seconds;
     bids must keep landing with no gap.
-13. **Remove the app** (only if you are done testing): Apps, My Apps, Remove,
+13. **Co-host.** In Zoom, make Bidder A a co-host (Participants, More, Make co-host).
+    - A's panel changes to "You're co-hosting" and shows the host controls (it may take a few seconds).
+    - A can start a lot, use the queue, end a round and download the CSV. The host's panel still says "You're hosting" and can still end a round.
+    - Take the co-host role away: A's controls disappear. If A got no controls at all, note it: it means Zoom's `participant_user_id` did not match the ID Gavel sees for A, which needs a one-line fix.
+14. **Browser sign-in.** On Bidder B's browser (join link, not in Zoom), click Sign in with Zoom at the top, allow, and land back signed in as your Zoom name.
+    - B bids; the host sees B's name. B reloads and is still signed in.
+    - In the same meeting, Bidder A (in Zoom, same Zoom account as B) shows as the same bidder, not a second one.
+15. **Remove the app** (only if you are done testing): Apps, My Apps, Remove,
     then add it again from the Marketplace Local Test page.
 
 ## If something breaks

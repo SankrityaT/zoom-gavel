@@ -32,7 +32,7 @@ export async function POST(
 
   try {
     const viewer = await readViewer(request, uuid)
-    const host = hostKeyFor(uuid, viewer)
+    const host = await hostKeyFor(uuid, viewer)
     if ('refusal' in host) return host.refusal
     const hostKey = host.hostKey
 

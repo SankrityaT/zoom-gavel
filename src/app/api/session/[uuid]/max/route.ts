@@ -3,7 +3,7 @@ import { readViewer } from '@/lib/gavel/auth'
 import { MAX_BID } from '@/lib/gavel/demo'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { getState, setMaxBid } from '@/lib/gavel/server'
-import { anonBidderKey, boundedInt, boundedString, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
+import { anonBidderKey, boundedInt, boundedString, guestSecretFrom, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -37,17 +37,19 @@ export async function POST(
   }
   const bidderName = boundedString(payload.bidderId, 60)
   if (bidderName === null) return badRequest('bidderId is required')
+  const secret = guestSecretFrom(payload.bidderSecret)
+  if (secret === undefined) return badRequest('bidderSecret is malformed')
 
   try {
     const viewer = await readViewer(request, uuid)
-    const bidderKey = viewer.verified ? (viewer.bidderKey as string) : await anonBidderKey(bidderName)
+    const bidderKey = viewer.verified ? (viewer.bidderKey as string) : await anonBidderKey(bidderName, secret)
     const limited = await enforce([
       rule(`bid:ip:${clientIp(request)}`, LIMITS.bidPerIp),
       rule(`bid:who:${uuid}:${bidderKey}`, LIMITS.bidPerBidder),
     ])
     if (limited) return limited
 
-    const outcome = await setMaxBid(uuid, bidderKey, bidderName, viewer.verified, amount)
+    const outcome = await setMaxBid(uuid, bidderKey, viewer.identity?.nm ?? bidderName, viewer.verified, amount)
     const state = await getState(uuid, viewer)
     if (!outcome.ok) {
       return NextResponse.json(

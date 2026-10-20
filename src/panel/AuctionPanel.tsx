@@ -113,7 +113,7 @@ function Header({ auction }: { auction: AuctionSessionHook }) {
       status = leaderboard.length === 0 ? 'Bidding is open' : `${leaderboard.length} bidding`
       tone = 'live'
     } else if (viewer.isHost || (session.sandbox && viewer.canControl)) {
-      status = "You're hosting"
+      status = viewer.isCohost ? "You're co-hosting" : "You're hosting"
       tone = 'host'
     } else if (session.status === 'closed') {
       status = 'Round over'
@@ -237,7 +237,7 @@ function Waiting({ hostUnconfirmed, upNext }: { hostUnconfirmed: boolean; upNext
       <p className="gv-waiting-title">Nothing on the block yet.</p>
       <p className="gv-waiting-body">
         {hostUnconfirmed
-          ? 'Zoom has not confirmed you as the host. Close Gavel and open it again from Apps.'
+          ? 'Zoom has not confirmed you as the host or a co-host. Close Gavel and open it again from Apps.'
           : 'The host starts each lot. Bidding opens here the moment they do.'}
       </p>
       {upNext !== null && !hostUnconfirmed && (

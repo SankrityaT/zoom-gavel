@@ -380,6 +380,72 @@ await scenario('S15', 'SSE stream pushes bids', async () => {
   check('S15 an absurd queue id is a 400, not a crash', oddId.status === 400, String(oddId.status))
 })
 
+await scenario('S26', 'a hand bid on a hidden max loses to it', async () => {
+  const k = key()
+  await init(k)
+  await start(k, { seconds: 60 })
+  const setCeiling = (who, amount) => api(`${encodeURIComponent(k)}/max`, { method: 'POST', body: { amount, bidderId: who } })
+  const name = (state, i = 0) => state.leaderboard[i]?.name
+  const a = await setCeiling('Ana', 500)
+  check('S26a ceiling opens at the opening price', a.status === 200 && a.json.state.session.currentBid === 100, JSON.stringify([a.status, a.json?.state?.session?.currentBid]))
+  const near = await bid(k, 499, 'Ben')
+  check('S26b a bid just under the ceiling is countered up to it', near.status === 200 && near.json.state.session.currentBid === 500 && name(near.json.state) === 'Ana', JSON.stringify([near.json?.state?.session?.currentBid, name(near.json?.state ?? { leaderboard: [] })]))
+  const k2 = key()
+  await init(k2)
+  await start(k2, { seconds: 60 })
+  await api(`${encodeURIComponent(k2)}/max`, { method: 'POST', body: { amount: 500, bidderId: 'Ana' } })
+  const tie = await bid(k2, 500, 'Ben')
+  const state = tie.json?.state
+  check('S26c a hand bid exactly on the ceiling is accepted', tie.status === 200, String(tie.status))
+  check('S26d the ceiling takes the lead at the same price', state?.session.currentBid === 500 && state?.session.leader?.name === 'Ana' && name(state) === 'Ana', JSON.stringify([state?.session.currentBid, state?.session.leader?.name, name(state), name(state, 1)]))
+  check('S26e the bidder who tied is second, not hidden', name(state, 1) === 'Ben')
+  const over = await bid(k2, 501, 'Ben')
+  check('S26f a bid one above the ceiling wins', over.status === 200 && over.json.state.session.currentBid === 501 && over.json.state.session.leader?.name === 'Ben', JSON.stringify([over.json?.state?.session?.currentBid, over.json?.state?.session?.leader?.name]))
+  const k3 = key()
+  await init(k3)
+  await start(k3, { seconds: 60 })
+  await api(`${encodeURIComponent(k3)}/max`, { method: 'POST', body: { amount: 500, bidderId: 'Ana' } })
+  const rival = await api(`${encodeURIComponent(k3)}/max`, { method: 'POST', body: { amount: 500, bidderId: 'Ben' } })
+  check('S26g two equal ceilings: the first one stands, at that price', rival.status === 200 && rival.json.state.session.currentBid === 500 && rival.json.state.session.leader?.name === 'Ana', JSON.stringify([rival.json?.state?.session?.currentBid, rival.json?.state?.session?.leader?.name]))
+})
+
+await scenario('S27', 'a guest cannot be impersonated by name', async () => {
+  const k = key()
+  await init(k)
+  await start(k, { seconds: 60 })
+  const s1 = randomBytes(12).toString('base64url')
+  const s2 = randomBytes(12).toString('base64url')
+  const post = (path, body) => api(`${encodeURIComponent(k)}${path}`, { method: 'POST', body })
+  const entries = (state) => state.leaderboard.filter((e) => e.name === 'Ana')
+
+  const own = await post('', { amount: 150, bidderId: 'Ana', bidderSecret: s1 })
+  check('S27a a guest with a secret bids', own.status === 200, String(own.status))
+  const ceiling = await post('/max', { amount: 400, bidderId: 'Ana', bidderSecret: s1 })
+  check('S27b and sets a max bid', ceiling.status === 200 && ceiling.json.max === 400, JSON.stringify(ceiling.json?.max))
+
+  // Someone who read the name off the leaderboard tries to act as her.
+  const noSecret = await post('/max', { amount: null, bidderId: 'Ana' })
+  const wrongSecret = await post('/max', { amount: 120, bidderId: 'Ana', bidderSecret: s2 })
+  check('S27c clearing her max by name alone does nothing to hers', noSecret.status === 200 || noSecret.status === 409)
+  check('S27d nor does another secret', wrongSecret.status === 200 || wrongSecret.status === 409)
+  const rival = await post('', { amount: 200, bidderId: 'Ben', bidderSecret: randomBytes(12).toString('base64url') })
+  check('S27e her max still answers a rival bid (so it was not cleared or lowered)', rival.status === 200 && rival.json.state.session.currentBid === 225 && rival.json.state.session.leader?.name === 'Ana', JSON.stringify([rival.json?.state?.session?.currentBid, rival.json?.state?.session?.leader?.name]))
+
+  // The same name without her secret is a different bidder, not her.
+  const imposter = await post('', { amount: 600, bidderId: 'Ana', bidderSecret: s2 })
+  const state = (await get(k)).json
+  check('S27f bidding as "Ana" with another secret makes a second, separate bidder', imposter.status === 200 && entries(state).length === 2 && new Set(entries(state).map((e) => e.bidderKey)).size === 2, JSON.stringify(entries(state).map((e) => e.bidderKey)))
+  const sameAgain = await post('', { amount: 650, bidderId: 'Ana', bidderSecret: s2 })
+  check('S27g the same secret is the same bidder again', sameAgain.status === 200 && entries((await get(k)).json).length === 2)
+
+  const bad = await post('', { amount: 700, bidderId: 'Ana', bidderSecret: 'short' })
+  check('S27h a malformed secret is a 400', bad.status === 400, String(bad.status))
+  const badMax = await post('/max', { amount: 800, bidderId: 'Ana', bidderSecret: '!'.repeat(20) })
+  check('S27i on the max route too', badMax.status === 400, String(badMax.status))
+  const legacy = await post('', { amount: 750, bidderId: 'Ana' })
+  check('S27j a client with no secret still works (as its own separate bidder)', legacy.status === 200 && entries((await get(k)).json).length === 3)
+})
+
 if (WEBHOOK_TOKEN && SESSION_SECRET) {
   const signed = (bodyObj, { token = WEBHOOK_TOKEN, ts = Math.floor(Date.now() / 1000) } = {}) => {
     const body = JSON.stringify(bodyObj)
@@ -460,6 +526,68 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const again = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver' } })
     check('S24m the notice is safe to repeat', again.status === 200, String(again.status))
   })
+  await scenario('S25', 'co-hosts named by Zoom run the meeting', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const host = mintCookie('userHostC', mid)
+    const cohost = mintCookie('userCohostC', mid)
+    const attendee = mintCookie('userAttendeeC', mid)
+    const role = (userId, newRole, oldRole = 'attendee', opts) =>
+      signed({ event: 'meeting.participant_role_changed', event_ts: opts?.eventTs ?? Date.now(), payload: { object: { uuid: mid, host_id: 'userHostC', participant: { participant_user_id: userId, user_name: 'x', old_role: oldRole, new_role: newRole } } } }, opts)
+    check('S25a the host is verified by the meeting.started notice', (await signed({ event: 'meeting.started', payload: { object: { uuid: mid, host_id: 'userHostC', id: 1 } } })).status === 200)
+    const first = await start(k, {}, host)
+    check('S25b the host starts a round', first.status === 200 && first.json.state.viewer.isHost === true && first.json.state.viewer.isCohost === false, JSON.stringify([first.status, first.json?.state?.viewer]))
+
+    const before = await stop(k, cohost)
+    check('S25c before any notice, an attendee cannot stop it (403)', before.status === 403, String(before.status))
+    const forged = await role('userCohostC', 'co-host', 'attendee', { token: 'wrong' })
+    check('S25d a forged role notice is a 401', forged.status === 401, String(forged.status))
+    check('S25e and changes nothing', (await stop(k, cohost)).status === 403)
+    const guest = await signed({ event: 'meeting.participant_role_changed', payload: { object: { uuid: mid, participant: { participant_user_id: '', new_role: 'co-host' } } } })
+    check('S25f a guest with no user id is ignored cleanly', guest.status === 200)
+    check('S25g a notice with no role is a 400', (await signed({ event: 'meeting.participant_role_changed', payload: { object: { uuid: mid, participant: { participant_user_id: 'x' } } } })).status === 400)
+
+    const promoted = await role('userCohostC', 'co-host')
+    check('S25h Zoom names the co-host', promoted.status === 200, String(promoted.status))
+    const view = await get(k, cohost)
+    check('S25i the co-host sees host powers, labelled as a co-host', view.json.viewer.isHost === true && view.json.viewer.isCohost === true && view.json.viewer.canControl === true, JSON.stringify(view.json.viewer))
+    const asAttendee = await get(k, attendee)
+    check('S25j an attendee still has none', asAttendee.json.viewer.isHost === false && asAttendee.json.viewer.canControl === false)
+    check('S25k an attendee still cannot start or stop', (await stop(k, attendee)).status === 403 && (await start(k, {}, attendee)).status === 403)
+
+    const stopped = await stop(k, cohost)
+    check('S25l the co-host stops the round', stopped.status === 200, JSON.stringify([stopped.status, stopped.json]))
+    const queued = await api(`${encodeURIComponent(k)}/queue`, { method: 'POST', cookie: cohost, body: { action: 'add', itemName: 'Queued', openingBid: 50, reservePrice: null, buyNowPrice: null, seconds: 30 } })
+    check('S25m the co-host queues a lot', queued.status === 200, String(queued.status))
+    const next = await api(`${encodeURIComponent(k)}/queue`, { method: 'POST', cookie: cohost, body: { action: 'start' } })
+    check('S25n and starts it', next.status === 200, JSON.stringify([next.status, next.json]))
+    const results = await api(`${encodeURIComponent(k)}/results`, { cookie: cohost })
+    check('S25o the co-host reads the results', results.status === 200, String(results.status))
+
+    // The co-host started that round, yet the real host's claim must be intact.
+    const hostView = await get(k, host)
+    check('S25p the host is still the host after a co-host starts a round', hostView.json.viewer.isHost === true && hostView.json.viewer.isCohost === false && hostView.json.session.hostVerified === true, JSON.stringify(hostView.json.viewer))
+    check('S25q the host can still stop it', (await stop(k, host)).status === 200)
+
+    const demoted = await role('userCohostC', 'attendee', 'co-host')
+    check('S25r Zoom demotes the co-host', demoted.status === 200)
+    const after = await start(k, {}, cohost)
+    check('S25s a demoted co-host is refused again', after.status === 403, String(after.status))
+    check('S25t a repeat of the same notice is harmless', (await role('userCohostC', 'attendee', 'co-host')).status === 200)
+
+    // Zoom retries, so an old notice can arrive after a newer one.
+    const base = Date.now()
+    await role('userLateC', 'co-host', 'attendee', { eventTs: base + 2000 })
+    const late = mintCookie('userLateC', mid)
+    check('S25u a co-host named at time 2000 has the controls', (await get(k, late)).json.viewer.isHost === true)
+    await role('userLateC', 'attendee', 'co-host', { eventTs: base + 1000 })
+    check('S25v an older "attendee" notice that arrives late changes nothing', (await get(k, late)).json.viewer.isHost === true)
+    await role('userLateC', 'attendee', 'co-host', { eventTs: base + 3000 })
+    check('S25w a newer "attendee" notice removes them', (await get(k, late)).json.viewer.isHost === false)
+    await role('userLateC', 'co-host', 'attendee', { eventTs: base + 2500 })
+    check('S25x an older "co-host" notice that arrives late does not bring them back', (await get(k, late)).json.viewer.isHost === false)
+  })
+
 } else {
   console.log('SKIP  S14 and S24 webhook scenarios (set ZOOM_WEBHOOK_SECRET_TOKEN and SESSION_SECRET to run)')
 }
@@ -696,7 +824,8 @@ if (SESSION_SECRET) {
     const mine = (await get(k, alice)).json
     const theirs = (await get(k, host)).json
     check('S22 your max comes back to you', mine.viewer.maxBid === 400, String(mine.viewer?.maxBid))
-    check('S22 and to nobody else, the host included', theirs.viewer.maxBid === null && !JSON.stringify(theirs).includes('400'), JSON.stringify(theirs.viewer))
+    // 400 as a JSON value anywhere, not as digits inside a timestamp.
+    check('S22 and to nobody else, the host included', theirs.viewer.maxBid === null && !/[:,[]400[,\]}]/.test(JSON.stringify(theirs)), JSON.stringify(theirs.viewer))
     await stop(k, host)
   })
 } else {

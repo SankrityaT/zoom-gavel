@@ -41,6 +41,13 @@ export default function Guide() {
         <li>Under So far you see every lot and the total raised. Download CSV saves the results for collecting payment.</li>
       </ol>
 
+      <h2>Co-hosts</h2>
+      <p>
+        If you make someone a co-host in Zoom (Participants, More, Make co-host), Gavel is told, and they can run the auction exactly as
+        you can: start and end lots, use the queue, see every bidder’s amount and download the results. Their panel says “You’re
+        co-hosting”. If you take the role away, their controls go too. You stay the host throughout.
+      </p>
+
       <h2>Bid (everyone else)</h2>
       <ol>
         <li>When the host starts a lot, the panel shows it with the price and a clock. You hear a chime if sounds are on.</li>
@@ -53,6 +60,12 @@ export default function Guide() {
         <li>If there is a Buy Now price, Buy it now takes the lot at once; tap twice to confirm.</li>
         <li>Your own bid amount is shown only to you and the host. The speaker button at the top mutes the sounds.</li>
       </ol>
+      <h3>Bidding from a browser</h3>
+      <p>
+        Open the link the host shares. You can bid as a guest straight away. If you have a Zoom account, click Sign in with Zoom at the
+        top: you will then be the same bidder as in the meeting, and nobody else can bid as you. Gavel asks Zoom only who you are and
+        keeps nothing else.
+      </p>
       <p>
         Gavel only records the sale. The host and the winner settle payment themselves, outside the app.
       </p>

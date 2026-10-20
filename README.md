@@ -49,7 +49,8 @@ Under the hood:
   both win.
 - **Verified identity.** Zoom tells the server who each person is and who the
   meeting host is; only the host can run rounds in their meeting.
-- **Tested.** A 148-assertion concurrency and security suite runs against the
+- **Co-hosts and browser sign-in.** Co-hosts Zoom names run the auction like the host. People bidding from a browser can sign in with Zoom to be verified bidders, or bid as guests that nobody can impersonate.
+- **Tested.** A 185-assertion concurrency and security suite runs against the
   live site (bid storms, simultaneous Buy Now, forged identity, privacy of bid
   amounts, max-bid contests, the queue, erasing a person who removes the app),
   and a stress test drives hundreds of simulated bidders and live streams and
@@ -95,9 +96,10 @@ Under the hood:
   credentials): see `docs/marketplace-submission.md`, which holds every field
   Zoom asks for, the reviewer's test plan and the technical design. The public
   pages Zoom requires are built: `/privacy`, `/terms`, `/support`, `/guide`.
-- Not built yet: payment inside the app (winners pay the host outside it),
-  co-hosts running rounds, verifying browser bidders (they bid under a typed
-  name, so a name can be impersonated), Marketplace submission itself.
+- Not built yet: payment inside the app (winners pay the host outside it) and
+  Marketplace submission itself. Co-hosts and the browser Zoom sign-in are
+  built and tested against signed notices and a fake Zoom, and still need a
+  pass in a real meeting.
 
 ## Local setup
 
@@ -190,8 +192,12 @@ Max bids. A bidder may set a ceiling for the round (`POST
 /api/session/[key]/max`). After every bid or ceiling change the server
 resolves the contest inside the same transaction, the way a live auction
 would: the highest ceiling leads at one $25 step above the runner-up's
-ceiling, never above its own, and a tie stays with whoever led. Automatic
-bids are marked as such in the ledger. A ceiling is private: a verified
+ceiling, never above its own, and a tie between two ceilings stays with
+whoever led. A plain hand bid that lands exactly on someone's hidden ceiling
+loses to it: the ceiling, committed first, takes the lead at that price (the
+one place two ledger rows carry the same amount, the second always automatic;
+the leaderboard breaks equal amounts by who bid last). Automatic bids are
+marked as such in the ledger. A ceiling is private: a verified
 bidder gets their own back from the server, an unverified bidder's browser
 remembers it, and nobody else ever sees one.
 
@@ -206,6 +212,29 @@ Removal. Zoom's `app_deauthorized` notice (same signed webhook) calls
 `purge_zoom_user` with the keyed hash of the Zoom id: max bids are deleted,
 names on bids and on won lots become "Removed bidder", a host claim is
 dropped. The record of each sale stays, naming nobody.
+
+Co-hosts. Zoom's app context carries no role, so the server cannot learn that
+someone is a co-host from their own session. Zoom's signed
+`meeting.participant_role_changed` notice (same webhook, same signature check)
+says so: it records the person's keyed hash in `auction_cohosts` while the
+role holds. A co-host sees and does what the host does, but SQL only knows one
+host and starting a round stamps the starter as host, so the API substitutes
+the host's own key when a verified co-host acts (`hostKeyFor`). The host's
+claim is never overwritten, and if the host changed in between, the old key no
+longer matches and SQL refuses.
+
+Browser identity. A person outside the Zoom client is one of two things. A
+guest: the name they type plus a private random secret in their browser, hashed
+together, so the key cannot be reproduced from a name seen on the leaderboard
+and nobody can bid or change a max bid as them. Or a Zoom sign-in: OAuth
+authorization code with PKCE (`/api/oauth/zoom/start` and `/callback`), a
+10-minute signed state cookie to bind the flow to the browser that began it,
+`user:read:user` to read the person's Zoom ID and name once, then the token is
+dropped. The result is the same `gavel_ctx` identity cookie an in-meeting
+bidder gets, with the same bidder key, and no meeting, so they are a verified
+bidder who cannot host. Returns only to a path on this site. Set
+`ZOOM_CLIENT_ID` to turn it on; the base URLs are overridable so a fake Zoom can
+stand in (`scripts/oauth-test.mjs`).
 
 Lot queue. The host lines up lots in advance (`/api/session/[key]/queue`,
 up to 30) and starts the next with one call that pops it and opens the
@@ -298,14 +327,17 @@ scenario. The suite itself counts against the per-IP round limit, so wait
 a minute between back-to-back runs.
 
 Environment: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, `ZOOM_CLIENT_SECRET`
+`SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, `ZOOM_CLIENT_ID` (optional; turns
+on "Sign in with Zoom"), `ZOOM_CLIENT_SECRET`
 (the Development app's secret for the tunnel, the Production app's for
 Vercel Production), and `ZOOM_WEBHOOK_SECRET_TOKEN` (the app's event
 subscription Secret Token; the webhook answers 503 without it).
 
-Known gaps, tracked deliberately for later phases: co-hosts cannot run
-rounds, payment is collected outside the app (no checkout), browser bidders
-are unverified, and the app is not yet published on the Zoom Marketplace.
+Known gaps, tracked deliberately for later phases: payment is collected
+outside the app (no checkout), a co-host made so before the app was opened has
+no controls until the role is given again (Zoom only sends a notice on a
+change), signing in with Zoom proves who someone is but not that they are in
+the meeting, and the app is not yet published on the Zoom Marketplace.
 
 ## Commands
 

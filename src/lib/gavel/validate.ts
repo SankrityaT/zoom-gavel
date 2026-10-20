@@ -1,6 +1,12 @@
 import { MAX_BID } from './demo'
 export { anonBidderKey } from './demo'
 
+// The browser's guest secret: absent, or 16 to 64 URL-safe characters.
+export function guestSecretFrom(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(value) ? value : undefined
+}
+
 // Positive integer within the bid ceiling, or null.
 export function boundedInt(value: unknown, min: number, max: number = MAX_BID): number | null {
   if (!Number.isInteger(value)) return null

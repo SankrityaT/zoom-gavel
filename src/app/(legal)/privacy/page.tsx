@@ -60,6 +60,23 @@ export default function Privacy() {
           </tr>
           <tr>
             <td>
+              <strong>If you sign in with Zoom in a browser</strong>: your Zoom user ID (kept only as the same keyed hash) and your
+              Zoom display name.
+            </td>
+            <td>
+              So only you can bid as you, and so you are the same bidder in a browser as in the meeting. We ask Zoom for read access to
+              your basic profile for this, use it once, and keep no access token.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>Who is a co-host</strong>, as Zoom reports it: the Zoom user ID (as a hash) of a person whose role in the meeting
+              changed.
+            </td>
+            <td>So co-hosts can run the auction, as the host can. Zoom’s notice also names the person; we use only the ID and the new role.</td>
+          </tr>
+          <tr>
+            <td>
               <strong>Your IP address</strong>, inside short-lived counters.
             </td>
             <td>To stop one source flooding the service with requests.</td>
@@ -67,9 +84,10 @@ export default function Privacy() {
         </tbody>
       </table>
       <p>
-        When Zoom tells us a meeting has started, we receive the meeting’s ID and its host’s ID. We use them to decide who may run the
-        auction. We do not read the participant list, chat, audio, video, recordings, files or any other meeting content, and we do not
-        collect your email address.
+        When Zoom tells us a meeting has started, we receive the meeting’s ID and its host’s ID. When someone’s role changes (for
+        example they become a co-host) we receive who and which role. We use these to decide who may run the auction. We do not read
+        the participant list, chat, audio, video, recordings, files or any other meeting content, and we do not store your email
+        address.
       </p>
 
       <h2>Money</h2>
@@ -92,11 +110,15 @@ export default function Privacy() {
       <h2>Cookies and browser storage</h2>
       <ul>
         <li>
-          <code>gavel_ctx</code>: a signed cookie, kept for 6 hours, that proves who you are to our server after Zoom has told us.
+          <code>gavel_ctx</code>: a signed cookie, kept for 6 hours, that proves who you are to our server after Zoom has told us. If
+          you sign in with Zoom in a browser it also holds your Zoom name.
         </li>
         <li>
-          In your browser’s storage: whether you muted sounds, a random ID for demo sessions, and your own last bid and max bid for the
-          current auction, so you still see them after a reload.
+          <code>gavel_oauth</code>: a short-lived cookie (10 minutes) used only while you are signing in with Zoom, then deleted.
+        </li>
+        <li>
+          In your browser’s storage: whether you muted sounds, a random ID for demo sessions, a private random guest secret that keeps
+          your name as a guest yours, and your own last bid and max bid for the current auction, so you still see them after a reload.
         </li>
         <li>We use no advertising or analytics cookies and no third-party trackers.</li>
       </ul>

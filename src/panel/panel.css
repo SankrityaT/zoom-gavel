@@ -1179,6 +1179,63 @@
   color: var(--ink-2);
 }
 
+/* ---- sign in with Zoom (browser only) ---- */
+.gv-signin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--paper-2, #f3ecdf);
+  color: #2a211b;
+  font-family: var(--font-body), ui-sans-serif, sans-serif;
+  font-size: 15px;
+}
+
+.gv-signin p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.gv-signin p span {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: #6b5b4e;
+}
+
+.gv-signin--on {
+  background: #e4ecff;
+  color: #2d66f6;
+}
+
+.gv-signin .gv-pill {
+  flex: none;
+  padding: 9px 15px;
+  border-radius: 999px;
+  background: #fffdf8;
+  color: #2a211b;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(72, 52, 30, 0.12);
+  white-space: nowrap;
+}
+
+.gv-signin .gv-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gv-toast {
     animation: none;

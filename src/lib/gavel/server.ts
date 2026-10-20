@@ -41,6 +41,7 @@ type RawState = {
   session: SessionRow
   leaderboard?: LeaderRow[]
   viewer_max?: number | null
+  viewer_cohost?: boolean
   server_now: string
 } | null
 
@@ -132,6 +133,17 @@ export async function purgeZoomUser(bidderKey: string) {
   )
 }
 
+// Records a role change Zoom reported: on for a co-host (or a host who took
+// over), off when they go back to attendee.
+export async function setCohost(uuid: string, bidderKey: string, on: boolean, eventTs: number) {
+  return rpc<{ ok: boolean; reason?: string }>('set_cohost', {
+    p_uuid: uuid,
+    p_key: bidderKey,
+    p_on: on,
+    p_ts: eventTs,
+  })
+}
+
 export async function setMeetingHost(uuid: string, hostKey: string) {
   return rpc<{ ok: boolean; reason?: string }>('set_meeting_host', {
     p_uuid: uuid,
@@ -145,11 +157,18 @@ export async function setMeetingHost(uuid: string, hostKey: string) {
 // own (verified identity only) and the verified host gets all of them.
 export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionState {
   const session = toSessionInfo(raw.session)
-  const isHost =
+  // Zoom names co-hosts in a signed notice; the database holds that result.
+  const isCohost =
     viewer.verified &&
-    viewer.bidderKey !== null &&
-    raw.session.host_key !== null &&
-    viewer.bidderKey === raw.session.host_key
+    viewer.inThisMeeting &&
+    raw.viewer_cohost === true &&
+    !(viewer.bidderKey !== null && viewer.bidderKey === raw.session.host_key)
+  const isHost =
+    (raw.viewer_cohost === true && viewer.verified && viewer.inThisMeeting) ||
+    (viewer.verified &&
+      viewer.bidderKey !== null &&
+      raw.session.host_key !== null &&
+      viewer.bidderKey === raw.session.host_key)
   const canControl =
     session.sandbox ||
     (viewer.verified && viewer.inThisMeeting && (!session.hostClaimed || isHost))
@@ -165,6 +184,7 @@ export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionS
       verified: viewer.verified,
       bidderKey: viewer.bidderKey,
       isHost,
+      isCohost,
       canControl,
       inThisMeeting: viewer.inThisMeeting,
       maxBid: viewer.verified ? (raw.viewer_max ?? null) : null,

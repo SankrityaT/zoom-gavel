@@ -14,7 +14,8 @@ against Zoom's published review docs on 2026-10-19:
 | 1 | **Serve the app from a domain you own**, e.g. `gavel.<yourdomain>`, not `zoomgavel.vercel.app`. Add it in Vercel, point DNS at it, and use it for the Home URL, webhook URL, privacy, terms and support URLs. | Zoom requires every listing and resource URL on a fully qualified domain owned by the developer, verifies it by TXT record, HTML file or meta tag, and its security guidance says to avoid default hosting-platform domains. | You (DNS) |
 | 2 | Confirm the support address and hours in `src/legal/contact.ts` (currently `sankritya.apps@gmail.com`, replies within 2 business days, Mon to Fri 9 to 5 Arizona time). The pages promise this publicly. | Zoom requires an active support channel with hours and a first-response time. | You |
 | 3 | In the Marketplace app, set the **Deauthorization notification URL** to `https://<domain>/api/zoom/webhook` and subscribe to the `app_deauthorized` event. | Required for every published app. The handler is built and tested (race scenario S24); Zoom has to be told where it is. | You or Aside |
-| 4 | Create or switch to the **Production** app credentials and put its Client Secret in Vercel Production as `ZOOM_CLIENT_SECRET`. | Zoom wants the Production Client ID on a first submission. | You |
+| 4 | Create or switch to the **Production** app credentials. Put its Client Secret in Vercel Production as `ZOOM_CLIENT_SECRET` and its Client ID as `ZOOM_CLIENT_ID` (the ID is what turns on "Sign in with Zoom"; without it the button simply does not appear). | Zoom wants the Production Client ID on a first submission. | You |
+| 4b | In the Marketplace app add the OAuth redirect URL(s) above (the Vercel address and your own domain both, while both serve the app), the `user:read:user` scope, and subscribe to `meeting.participant_role_changed`. | The sign-in and co-host features read them. | You or Aside |
 | 5 | Run `docs/in-meeting-test.md` once in a real meeting, sounds and CSV download especially. | Never tried inside the Zoom client. A reviewer will. | You |
 | 6 | Rotate the webhook Secret Token (it appeared once in a tool transcript on 2026-10-02) and update `ZOOM_WEBHOOK_SECRET_TOKEN` in Vercel. | Zoom asks that keys and secrets be rotated regularly. | You |
 
@@ -51,6 +52,7 @@ against Zoom's published review docs on 2026-10-19:
 | Support | `https://<domain>/support`, email `sankritya.apps@gmail.com` |
 | Documentation (add, use, remove) | `https://<domain>/guide` |
 | Event notification and deauthorization URL | `https://<domain>/api/zoom/webhook` |
+| OAuth redirect URL (and allow list) | `https://<domain>/api/oauth/zoom/callback` |
 
 ## Scopes and APIs, with the reason for each
 
@@ -63,6 +65,8 @@ against Zoom's published review docs on 2026-10-19:
 | `startCollaborate`, `onCollaborateChange` | Let the host open the app for everyone in the meeting (Invite all). |
 | `onRunningContextChange` | Keep the panel correct when the app moves between the side panel and a shared view. |
 | Event `app_deauthorized` | Erase a person's data when they remove the app. |
+| Event `meeting.participant_role_changed` | Learn when someone becomes a co-host (or stops being one), so co-hosts can run the auction. Only the participant's Zoom user ID and the new role are used; the rest of the event is ignored. (Check on the Event Subscriptions page which scope Zoom attaches to it.) |
+| OAuth scope `user:read:user` | "Sign in with Zoom" for people bidding from a browser: read the signed-in person's Zoom user ID and display name once, to make them the same verified bidder as in the meeting. No token is stored. Redirect URL: `https://<domain>/api/oauth/zoom/callback`. |
 
 Domain allow list: the production domain only. Inside Zoom the panel talks to
 its own origin (server-sent events and plain HTTPS), never to another host.
@@ -125,7 +129,8 @@ and call no function. Rate limits live in Postgres (per IP and per bidder).
 Inputs are validated and bounded. Webhook bodies are size-limited and signed.
 
 **Testing.**
-- A 148-assertion concurrency and security suite (`npm run test:race`), run on every deploy against production: bid storms, expiry boundaries, forged identity, bid privacy, webhook verification, max-bid contests, the lot queue, app removal.
+- A 185-assertion concurrency and security suite (`npm run test:race`), run on every deploy against production: bid storms, expiry boundaries, forged identity, bid privacy, webhook verification, max-bid contests, the lot queue, app removal.
+- `scripts/oauth-test.mjs`: the whole "Sign in with Zoom" flow against a fake Zoom, including forged state, replay, login CSRF, a tampered handshake cookie, open-redirect attempts and refused consent.
 - `scripts/stress-test.mjs`: hundreds of simulated bidders, 100 to 250 simultaneous live streams, 24 concurrent max-bid contests, queue churn, and a SQL check of the ledger afterwards. Results: zero errors and a clean ledger at every size; the database itself does a bid in about 1.4 ms.
 - Independent code reviews of the server code, the last one on 2026-10-19 (findings fixed or listed below).
 - `npm audit --omit=dev`: 0 vulnerabilities (Next.js 16.4.2).
@@ -137,8 +142,8 @@ signs only 6 hour cookies).
 
 ## Known limits to be upfront about
 
-- Bidders who join from a browser link are **unverified**: their identity is the name they type. Someone who knows an unverified bidder's name could bid, or change a max bid, as them. Verified (in-Zoom) bidders are not affected. A pairing-code step would fix this; it is not built.
-- A bid exactly equal to another bidder's hidden max bid beats it (a hand bid at the ceiling wins the tie).
-- Co-hosts cannot run rounds; only the meeting's host can.
+- A browser bidder who has not signed in with Zoom is a **guest**: their identity is the name they type plus a private random secret kept in their browser. Nobody can bid or change a max bid as a guest they have only seen on the leaderboard, but a guest has no Zoom-backed identity, and clearing browser storage makes them a new guest. Signing in with Zoom gives a verified identity. Sign-in proves who someone is, not that they are in the meeting.
+- A co-host is whoever Zoom's `meeting.participant_role_changed` notice names while the app is subscribed; someone made co-host before opening the app, with no later change, has no controls until the role is given again. Built and tested against signed notices, not yet in a real meeting.
+- Two equal max bids: the one that was leading keeps it. A plain hand bid that lands exactly on a hidden max bid now loses to the max bid.
 - Payment happens outside the app, by design.
 - The panel has not been run through a full in-meeting test since the Oct 5 week's features (queue, max bid, alerts) were added.

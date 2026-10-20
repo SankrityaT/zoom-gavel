@@ -10,6 +10,8 @@ export type Identity = {
   v: 1
   uid: string
   mid: string | null
+  /** Display name, set when the person signed in with Zoom in a browser. */
+  nm?: string
   iat: number
   exp: number
 }
@@ -85,12 +87,49 @@ export async function verifyIdentity(
       v: 1,
       uid: parsed.uid,
       mid: typeof parsed.mid === 'string' ? parsed.mid : null,
+      ...(typeof parsed.nm === 'string' && parsed.nm ? { nm: parsed.nm.slice(0, 60) } : {}),
       iat: typeof parsed.iat === 'number' ? parsed.iat : 0,
       exp: parsed.exp,
     }
   } catch {
     return null
   }
+}
+
+// Short-lived signed JSON, for state that must survive a redirect (the Zoom
+// sign-in handshake). Same MAC as the identity cookie, never trusted unsigned.
+// The MAC covers a label as well as the payload, so a signed handshake can
+// never be mistaken for an identity cookie signed with the same secret.
+const JSON_LABEL = 'json:'
+
+export async function signJson(value: object, secret: string) {
+  const payload = bytesToBase64Url(encoder.encode(JSON.stringify(value)))
+  const key = await hmacKey(secret, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(JSON_LABEL + payload))
+  return `${payload}.${bytesToBase64Url(new Uint8Array(sig))}`
+}
+
+export async function verifyJson<T>(cookie: string | undefined, secret: string): Promise<T | null> {
+  if (!cookie) return null
+  const dot = cookie.indexOf('.')
+  if (dot <= 0) return null
+  try {
+    const key = await hmacKey(secret, ['verify'])
+    const ok = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      base64UrlToBytes(cookie.slice(dot + 1)),
+      encoder.encode(JSON_LABEL + cookie.slice(0, dot)),
+    )
+    if (!ok) return null
+    return JSON.parse(new TextDecoder().decode(base64UrlToBytes(cookie.slice(0, dot)))) as T
+  } catch {
+    return null
+  }
+}
+
+export function readCookieValue(request: Request, name: string) {
+  return readCookie(request, name)
 }
 
 // Public bidder identity: HMAC of the subject, truncated. Raw Zoom uids never
