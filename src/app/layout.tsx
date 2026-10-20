@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import '../index.css'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://zoomgavel.vercel.app'),
+  metadataBase: new URL('https://gavel-app.sankrityat.com'),
   title: {
     default: 'Zoom Gavel · The auction never leaves the meeting',
     template: '%s · Zoom Gavel',
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     'Native, real-time competitive bidding inside a live Zoom meeting. Real bids, a live clock, and a gavel. No second tab, no screen share pretending to be a sale.',
   openGraph: {
     type: 'website',
-    url: 'https://zoomgavel.vercel.app',
+    url: 'https://gavel-app.sankrityat.com',
     siteName: 'Zoom Gavel',
     title: 'Zoom Gavel · The auction never leaves the meeting',
     description:

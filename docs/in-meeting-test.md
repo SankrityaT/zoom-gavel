@@ -17,7 +17,7 @@ You need three people or devices:
 
 ## Before the meeting
 
-- Marketplace Home URL (Development) is `https://zoomgavel.vercel.app/zoom-test`
+- Marketplace Home URL (Development) is `https://gavel-app.sankrityat.com/zoom-test`
   and the app shows under Apps, My Apps for the developer account.
 - The `meeting.started` event subscription points at
   `/api/zoom/webhook` on the same site, and its Secret Token is in Vercel as

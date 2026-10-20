@@ -22,7 +22,7 @@ Still open, in Zoom's wording, and why:
 
 | Item | Needs | Who |
 |------|-------|-----|
-| Privacy Policy, Terms of Use, Support and Documentation URLs | A domain you own (Zoom validates ownership and discourages `vercel.app`). `gavel-app.sankrityat.com` is added to the Vercel project; its DNS lives in Cloudflare, which is signed out in Aside's browser. Then change `SITE` in `src/legal/contact.ts` and the metadata base, and add the domain's redirect and webhook URLs to the Marketplace app. | You |
+| Privacy Policy, Terms of Use, Support and Documentation URLs | A domain you own (Zoom validates ownership and discourages `vercel.app`). `gavel-app.sankrityat.com` is live (DNS moved to Squarespace nameservers on 2026-10-20, certificate issued, `SITE` and the metadata base switched). The Marketplace app still has to be pointed at it: Home URL, domain allow list, OAuth allow list, webhook endpoint, and the four links. | You |
 | Privacy Policy acknowledgment is required | A checkbox only you can tick | You |
 | EU & Discoverability (9 business, bank and ID items) | Either untick "Available in the EU" (no business details needed) or provide a trader's name, address, email, phone, bank name and last 4 digits, a trade register number, an ID document and the compliance declaration | You |
 | Switch to the **Production** credentials | Production Client Secret into `ZOOM_CLIENT_SECRET` and its Client ID into `ZOOM_CLIENT_ID` in Vercel, then redeploy | You or Aside |

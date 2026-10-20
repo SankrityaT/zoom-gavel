@@ -8,8 +8,8 @@ join from a browser link and bid the same way.
 Built by Sankritya Thakur for the ASU Next Lab x Zoom fellowship
 (Aug 27 to Dec 1, 2026).
 
-- Live site: https://zoomgavel.vercel.app
-- The in-meeting panel: https://zoomgavel.vercel.app/zoom-test
+- Live site: https://gavel-app.sankrityat.com
+- The in-meeting panel: https://gavel-app.sankrityat.com/zoom-test
 - Stack: Next.js 16, React 19, Zoom Apps SDK, Supabase Postgres + Realtime, Vercel
 
 ## What it does today
@@ -121,7 +121,7 @@ See `docs/in-meeting-test.md` for the runbook (written before the panel
 redesign, so some on-screen labels it quotes have changed). The Marketplace app is a
 General App with the Zoom App surface:
 
-- Home URL: `https://zoomgavel.vercel.app/zoom-test`
+- Home URL: `https://gavel-app.sankrityat.com/zoom-test`
 - Scopes: `zoomapp:inmeeting`, `meeting:read:meeting`
 - In-client features: Collaborate Mode, Guest Mode
 - Event subscription: `meeting.started` to `/api/zoom/webhook`
