@@ -7,17 +7,27 @@ against Zoom's published review docs on 2026-10-19:
 [common rejection issues](https://developers.zoom.us/docs/distribute/app-submission/common-rejection-issues/),
 [security requirements](https://developers.zoom.us/docs/distribute/security-requirements/).
 
-## Before you can submit (needs a person)
+## Where it stands (2026-10-20)
 
-| # | What | Why | Who |
-|---|------|-----|-----|
-| 1 | **Serve the app from a domain you own**, e.g. `gavel.<yourdomain>`, not `zoomgavel.vercel.app`. Add it in Vercel, point DNS at it, and use it for the Home URL, webhook URL, privacy, terms and support URLs. | Zoom requires every listing and resource URL on a fully qualified domain owned by the developer, verifies it by TXT record, HTML file or meta tag, and its security guidance says to avoid default hosting-platform domains. | You (DNS) |
-| 2 | Confirm the support address and hours in `src/legal/contact.ts` (currently `sankritya.apps@gmail.com`, replies within 2 business days, Mon to Fri 9 to 5 Arizona time). The pages promise this publicly. | Zoom requires an active support channel with hours and a first-response time. | You |
-| 3 | In the Marketplace app, set the **Deauthorization notification URL** to `https://<domain>/api/zoom/webhook` and subscribe to the `app_deauthorized` event. | Required for every published app. The handler is built and tested (race scenario S24); Zoom has to be told where it is. | You or Aside |
-| 4 | Create or switch to the **Production** app credentials. Put its Client Secret in Vercel Production as `ZOOM_CLIENT_SECRET` and its Client ID as `ZOOM_CLIENT_ID` (the ID is what turns on "Sign in with Zoom"; without it the button simply does not appear). | Zoom wants the Production Client ID on a first submission. | You |
-| 4b | In the Marketplace app add the OAuth redirect URL(s) above (the Vercel address and your own domain both, while both serve the app), the `user:read:user` scope, and subscribe to `meeting.participant_role_changed`. | The sign-in and co-host features read them. | You or Aside |
-| 5 | Run `docs/in-meeting-test.md` once in a real meeting, sounds and CSV download especially. | Never tried inside the Zoom client. A reviewer will. | You |
-| 6 | Rotate the webhook Secret Token (it appeared once in a tool transcript on 2026-10-02) and update `ZOOM_WEBHOOK_SECRET_TOKEN` in Vercel. | Zoom asks that keys and secrets be rotated regularly. | You |
+Done in the Marketplace app, by Aside, nothing submitted:
+
+- Scopes: `zoomapp:inmeeting`, `meeting:read:meeting`, `meeting:read:participant` (Zoom required it for the role-change event), `user:read:user` (browser sign-in).
+- Events, Development and Production: Start Meeting, Participant role changed. Production endpoint `https://zoomgavel.vercel.app/api/zoom/webhook` validated.
+- OAuth allow list includes `https://zoomgavel.vercel.app/api/oauth/zoom/callback`.
+- Listing: short and long description, icon, three gallery images (in `docs/marketplace/`), category Event Management, industry Other.
+- Technical Design: technology stack, architecture diagram, the SSDLC, SAST/DAST and penetration-test answers, the three security answers, and the evidence PDFs.
+- The webhook Secret Token was rotated on 2026-10-20 (Zoom shares one token across Development and Production) and is in Vercel production as `ZOOM_WEBHOOK_SECRET_TOKEN`. `ZOOM_CLIENT_ID` (Development app) is set, which turned browser sign-in on. The variable accepts several comma separated tokens, in case the two apps ever get different ones.
+
+Still open, in Zoom's wording, and why:
+
+| Item | Needs | Who |
+|------|-------|-----|
+| Privacy Policy, Terms of Use, Support and Documentation URLs | A domain you own (Zoom validates ownership and discourages `vercel.app`). `gavel-app.sankrityat.com` is added to the Vercel project; its DNS lives in Cloudflare, which is signed out in Aside's browser. Then change `SITE` in `src/legal/contact.ts` and the metadata base, and add the domain's redirect and webhook URLs to the Marketplace app. | You |
+| Privacy Policy acknowledgment is required | A checkbox only you can tick | You |
+| EU & Discoverability (9 business, bank and ID items) | Either untick "Available in the EU" (no business details needed) or provide a trader's name, address, email, phone, bank name and last 4 digits, a trade register number, an ID document and the compliance declaration | You |
+| Switch to the **Production** credentials | Production Client Secret into `ZOOM_CLIENT_SECRET` and its Client ID into `ZOOM_CLIENT_ID` in Vercel, then redeploy | You or Aside |
+| A real in-meeting run of `docs/in-meeting-test.md`, including co-host and browser sign-in | The Zoom desktop app and two other people | You |
+| The one sign-in test Aside could not do: sign in with Zoom in your own browser | Your Zoom password | You |
 
 ## Listing
 
