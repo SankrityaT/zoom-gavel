@@ -7,32 +7,28 @@ against Zoom's published review docs on 2026-10-19:
 [common rejection issues](https://developers.zoom.us/docs/distribute/app-submission/common-rejection-issues/),
 [security requirements](https://developers.zoom.us/docs/distribute/security-requirements/).
 
-## Where it stands (2026-10-20, end of day)
+## Where it stands (2026-10-21)
 
-Zoom's Publish page reads "Ready for submission". Nothing has been submitted.
+Zoom's Publish page reads "Ready for submission" with no incomplete items. **Not yet submitted.** Only the two attestation checkboxes and the Submit button remain, and those are the owner's.
 
-Done, by Aside, each saved and re-opened to confirm:
+Checked against Zoom's review guidelines on 2026-10-21 and fixed where we fell short:
 
-- Domain: `gavel-app.sankrityat.com` (DNS on Squarespace nameservers, Vercel certificate). `sankrityat.com` is **verified** with Zoom by a TXT record. Every old address (`vercel.app`, the old tunnel) is out of the Marketplace app.
-- Scopes: `zoomapp:inmeeting`, `meeting:read:meeting`, `meeting:read:participant`, `user:read:user`.
-- Events (Development and Production): Start Meeting, Participant role changed. Production endpoint `https://gavel-app.sankrityat.com/api/zoom/webhook` validated.
-- OAuth redirect URL and allow list: only `https://gavel-app.sankrityat.com/api/oauth/zoom/callback`.
-- Listing: descriptions, icon, three gallery images, category Event Management, industry Other; Privacy, Terms, Support and Documentation links on the new domain; the privacy acknowledgment ticked.
-- EU: "Available in the EU" unticked, so no business, bank or ID details are required.
-- Technical Design: technology stack, architecture diagram, security answers and the two evidence PDFs.
-- Release notes for the reviewer (1,839 of 2,000 characters). They do not yet mention the host's payment line (step: set "How winners pay", end a lot, the winner sees a green card); add a sentence if you want reviewers to see it.
+- **Trademark.** The product is "Gavel" and the app is "Gavel for Zoom Meetings"; the Zoom name appears only as "for Zoom". The old "Zoom Gavel" name is gone from every public page and from the site title. The legal pages say the app is independent and not made or endorsed by Zoom.
+- **User-generated content.** A "Something wrong with this auction? Tell us at (email)" line sits at the foot of the panel, and the terms have a Reporting a problem section (read on business days, answered within 2).
+- **Sensitive data.** The host's payment line refuses anything shaped like a card or bank number, and the panel tells hosts not to enter one.
+- **Unexpected audio.** Sounds start off inside the Zoom client; the speaker button turns them on. In a browser they start on.
+- **Privacy.** The policy covers what is collected, why, who sees it, retention, access and deletion, encryption at rest, the providers that host the data, and removal on uninstall. It names one developer throughout.
+- **Deauthorization.** The Production deauthorization URL is set to `https://gavel-app.sankrityat.com/api/zoom/webhook`; the handler verifies Zoom's signature and deletes the person's data (tested, race scenario S24).
+- **Scopes.** Minimum set, each explained in the reviewer notes: `zoomapp:inmeeting`, `meeting:read:meeting`, `meeting:read:participant`, `user:read:user`. The SDK calls in the code match the seven enabled in the Marketplace.
+- **Sign in with Zoom** now uses the **Production** client ID (`WmyMtZdnSDarmip4c7vDMQ`), so reviewers' accounts can authorize it. `ZOOM_CLIENT_SECRET` holds `production,development` in that order.
+- The webhook Secret Token was rotated again on 2026-10-21 and the Production endpoint re-validated.
 
-Server side:
+Known limits, stated openly (the listing and legal pages say so):
 
-- `ZOOM_WEBHOOK_SECRET_TOKEN` was rotated on 2026-10-20 (Zoom shares one token across both apps).
-- `ZOOM_CLIENT_SECRET` holds two secrets, `development,production`. The server tries each when reading an identity, so both apps work. The first belongs to `ZOOM_CLIENT_ID` for Sign in with Zoom, which is the **Development** app (`VPpRXuSfudZQULIWyrYA`) for now.
-
-Left, and why only the owner can do them:
-
-1. Tick two attestations on the Publish page: "I agree to Zoom's Marketplace developer agreement" and "I, the vendor, represent and warrant that all information and statements provided on this form are true and correct."
-2. Before submitting, do the two real tests in `docs/in-meeting-test.md`: Sign in with Zoom in your own browser (needs your Zoom password), and the co-host step in a real meeting. Reviewers will exercise both.
-3. At submission, flip Sign in with Zoom to the Production app: set `ZOOM_CLIENT_ID` to `WmyMtZdnSDarmip4c7vDMQ` and put the Production secret first in `ZOOM_CLIENT_SECRET`, then redeploy. Do this after test 2, because the Development app's sign-in stops working once it is flipped.
-4. Press Submit.
+- Not made by Zoom, and no payment is processed; the host's payment line is plain text that Gavel cannot verify.
+- No third-party penetration test and no commercial DAST scan.
+- Browser guests are identified by name plus a private browser secret; Sign in with Zoom gives a verified identity.
+- Co-host support is built and tested against signed notices but was not run in a real meeting.
 
 ## Listing
 
