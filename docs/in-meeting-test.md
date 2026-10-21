@@ -59,7 +59,7 @@ You need three people or devices:
    one tap, and nobody's old max carries over.
 10. **Results.** The host's receipt lists both lots and the total. Click
     Download CSV and check the file saves and opens. This has never been tried
-    inside the Zoom client; if the download is blocked, note exactly what Zoom shows.
+    inside the Zoom client. If the download is blocked, try Copy as text next to it (and, if copying is blocked too, the text appears in a box to select by hand); note exactly what Zoom shows.
 11. **Mute.** A bidder taps the speaker icon: no further sounds.
 12. **Leave the panel open 5+ minutes** once. Streams recycle every 270 seconds;
     bids must keep landing with no gap.

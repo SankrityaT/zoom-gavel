@@ -193,6 +193,17 @@ export function useAuctionSession(
 
   // An extension is a later deadline within the same round. A new round has
   // a later deadline too, but it is a new lot, not more time on the old one.
+  // Setting or removing a max bid does not move the session's updatedAt, so a
+  // read that began just before the write can come back with the old value and
+  // an equal timestamp. For a few seconds after our own write, our value wins.
+  const pinnedMax = useRef<{ roundNo: number; value: number | null; until: number } | null>(null)
+  const withPinnedMax = useCallback((state: SessionState): SessionState => {
+    const pin = pinnedMax.current
+    if (!pin || Date.now() > pin.until || pin.roundNo !== state.session.roundNo) return state
+    if (state.viewer.maxBid === pin.value) return state
+    return { ...state, viewer: { ...state.viewer, maxBid: pin.value } }
+  }, [])
+
   const noteExtension = useCallback((nextEndsAt: string | null, status: string, roundNo: number) => {
     const prev = endsAtRef.current
     if (status === 'open' && prev?.endsAt && prev.roundNo === roundNo && nextEndsAt && nextEndsAt > prev.endsAt) {
@@ -209,18 +220,18 @@ export function useAuctionSession(
         // Older session snapshot: keep what we hold, but the viewer block
         // (host claim, verification) may still be fresher, and a bid this
         // viewer just placed may need filling in.
-        const merged = reveal({ ...current, viewer: next.viewer, serverNow: next.serverNow }, current)
+        const merged = withPinnedMax(reveal({ ...current, viewer: next.viewer, serverNow: next.serverNow }, current))
         latestState.current = merged
         setSync({ phase: 'live', state: merged })
         return
       }
       latestUpdatedAt.current = next.session.updatedAt
       noteExtension(next.session.endsAt, next.session.status, next.session.roundNo)
-      const merged = reveal(next, current)
+      const merged = withPinnedMax(reveal(next, current))
       latestState.current = merged
       setSync({ phase: 'live', state: merged })
     },
-    [noteExtension, reveal],
+    [noteExtension, reveal, withPinnedMax],
   )
 
   // Returns true when only a full state read can finish the update: the
@@ -511,6 +522,7 @@ export function useAuctionSession(
             : null
         setLocalMax(next)
         writeOwnMax(sessionKey, next)
+        pinnedMax.current = { roundNo: result.state.session.roundNo, value: result.max, until: Date.now() + 4000 }
       }
       if (result.state) applyState(result.state)
       return result

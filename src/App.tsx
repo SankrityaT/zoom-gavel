@@ -169,6 +169,13 @@ function App() {
   const sessionKey = meetingUuid
     ? `mtg-${toSessionKey(meetingUuid)}`
     : (joinKey ?? fallbackKey)
+  // Inside the Zoom client, never fall back to the private browser demo: if
+  // Zoom's start-up calls failed, or the meeting id did not come back, say so.
+  // (Outside Zoom both are simply the browser.)
+  const inZoomWebview = typeof navigator !== 'undefined' && /ZoomApps/i.test(navigator.userAgent)
+  const zoomStartupFailed =
+    check.phase !== 'checking' &&
+    ((check.phase === 'disconnected' && inZoomWebview) || (isMeeting && meetingUuid === null))
   const sessionLabel = meetingUuid
     ? 'Meeting session'
     : joinKey
@@ -244,6 +251,14 @@ function App() {
             webview the direct realtime path must never run at all. */}
         {check.phase === 'checking' ? (
           <p className="gavel-loading">Opening Gavel…</p>
+        ) : zoomStartupFailed ? (
+          <div className="gavel-loading">
+            <p>Gavel could not tell which meeting this is.</p>
+            <button className="gv-pill" type="button" onClick={() => void runSdkCheck({ force: true })}>
+              Try again
+            </button>
+            <p className="gavel-loading-fine">If it keeps happening, close Gavel and open it again from Apps.</p>
+          </div>
         ) : (
           sessionKey && (
             <>

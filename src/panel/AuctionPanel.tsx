@@ -1476,6 +1476,8 @@ function Invite({ sessionKey, onInviteMeeting }: { sessionKey: string; onInviteM
 function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: string }) {
   const { session } = state
   const [rounds, setRounds] = useState<RoundRecord[] | null>(null)
+  const [csvCopied, setCsvCopied] = useState(false)
+  const [csvText, setCsvText] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -1490,6 +1492,23 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
       active = false
     }
   }, [sessionKey, session.status, session.roundNo])
+
+  async function copyCsv() {
+    try {
+      const res = await fetch(resultsUrl(sessionKey, 'csv'), { cache: 'no-store' })
+      if (!res.ok) return
+      const text = await res.text()
+      if (await copyText(text)) {
+        setCsvCopied(true)
+        setTimeout(() => setCsvCopied(false), 2000)
+      } else {
+        // Neither the download nor the clipboard works here: show it to select by hand.
+        setCsvText(text)
+      }
+    } catch {
+      // The download link is still there.
+    }
+  }
 
   if (!rounds || rounds.length === 0) return null
   const sold = rounds.filter((round) => round.outcome === 'sold')
@@ -1520,13 +1539,28 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
         </p>
       </div>
       <div className="gv-receipt-foot">
-        <a href={resultsUrl(sessionKey, 'csv')} download="gavel-results.csv">
-          Download CSV
-        </a>
+        <span className="gv-receipt-actions">
+          <a href={resultsUrl(sessionKey, 'csv')} download="gavel-results.csv">
+            Download CSV
+          </a>
+          <button className="gv-link" type="button" onClick={() => void copyCsv()}>
+            {csvCopied ? 'Copied' : 'Copy as text'}
+          </button>
+        </span>
         <span>
           {sold.length} of {rounds.length} sold
         </span>
       </div>
+      {csvText !== null && (
+        <textarea
+          className="gv-csv-text"
+          readOnly
+          value={csvText}
+          aria-label="Results as comma separated text. Select it and copy."
+          onFocus={(event) => event.currentTarget.select()}
+          onClick={(event) => event.currentTarget.select()}
+        />
+      )}
     </div>
   )
 }
