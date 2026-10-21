@@ -122,7 +122,7 @@ export default function Details() {
             <Still script={BOUGHT} show={['tag']} />
           </Crop>
         </Tile>
-        <Tile title="You are told the moment you are passed." small="A banner, and in a meeting a sound: when bidding opens, when you are outbid, through the last five seconds, and when the hammer falls.">
+        <Tile title="You are told the moment you are passed." small="A banner, and a sound if you switch it on (sounds start off inside Zoom): when bidding opens, when you are outbid, through the last five seconds, and when the hammer falls.">
           <Crop className="crop--toast">
             <div className="gv">
               <Toast alert={{ id: 1, tone: 'outbid', title: "You've been outbid", detail: 'Marcus bid $1,175' }} onDismiss={() => undefined} />

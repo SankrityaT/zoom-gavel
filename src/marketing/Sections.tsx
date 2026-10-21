@@ -12,7 +12,7 @@ const QUESTIONS = [
   },
   {
     q: 'Who can start and stop a lot?',
-    a: 'The meeting host. Zoom tells the server who started the meeting through a signed webhook, and every host action is checked against it. Co-hosts cannot run lots yet.',
+    a: 'The meeting host, and any co-host the host names in Zoom. Zoom tells the server who started the meeting, and who becomes a co-host, through signed notices, and every host action is checked against them.',
   },
   {
     q: 'Can other bidders see what I bid?',
@@ -24,7 +24,7 @@ const QUESTIONS = [
   },
   {
     q: 'How do winners pay?',
-    a: 'Outside the app. The host downloads a CSV with each lot, its final price and its winner, and collects payment however they normally do. There is no checkout in the panel.',
+    a: 'Outside the app. The host can leave one line saying where to send money, like a Venmo handle, and only the winner of a lot sees it, with a Copy button. The host also downloads a CSV with each lot, its final price and its winner. Gavel never takes the money, and there is no checkout in the panel.',
   },
   {
     q: 'Can I try it without a meeting?',

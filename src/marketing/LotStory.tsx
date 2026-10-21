@@ -143,8 +143,8 @@ export default function LotStory() {
           final second. The deadline lives on the server and every panel counts down to the same instant.
         </Step>
         <Step title="The hammer falls." at="18% 100%" flip show={(active) => <SoldRound active={active} />}>
-          The clock stops and the lot is stamped Sold, or marked not sold if the reserve was never met. The host
-          keeps a receipt of the night, with a CSV to download for collecting payment afterward.
+          The clock stops and the lot is stamped Sold, or marked not sold if the reserve was never met. The winner is
+          shown how to pay, in the host’s own words, and the host keeps a receipt of the night with a CSV to download.
         </Step>
       </div>
 
