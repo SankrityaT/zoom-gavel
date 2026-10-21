@@ -10,7 +10,7 @@ export default function Doc({ title, lead, children }: { title: string; lead: st
     <div className="doc">
       <header className="doc-head">
         <Link href="/" className="doc-brand">
-          Zoom Gavel
+          Gavel
         </Link>
         <nav aria-label="Pages">
           <Link href="/guide">Guide</Link>

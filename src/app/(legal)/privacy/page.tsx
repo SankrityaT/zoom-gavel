@@ -15,7 +15,7 @@ export default function Privacy() {
     >
       <h2>Who we are</h2>
       <p>
-        {APP_NAME} (Zoom Gavel) is built by {DEVELOPER} as part of the ASU Next Lab × Zoom fellowship. Write to{' '}
+        {APP_NAME} is built and run by {DEVELOPER}, an independent developer. It is not made or endorsed by Zoom. Write to{' '}
         <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> about anything on this page.
       </p>
 
@@ -168,6 +168,7 @@ export default function Privacy() {
 
       <h2>How we protect it</h2>
       <ul>
+        <li>The database provider encrypts stored data at rest, and the companies that host it handle it only to provide that service, under their own security and privacy terms.</li>
         <li>Everything travels over HTTPS.</li>
         <li>Zoom IDs are stored only as keyed hashes. The database cannot be read directly by the public; every read goes through our server.</li>
         <li>Each auction’s live updates use a private channel that only someone who already holds that auction’s key can join.</li>

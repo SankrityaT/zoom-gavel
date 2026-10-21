@@ -495,6 +495,14 @@ await scenario('S28', 'how winners pay', async () => {
   const cleared = await pay({ action: 'set', note: null })
   check('S28n the host clears it', cleared.status === 200 && cleared.json.note === null)
   check('S28o a winner then sees the lot but no payment details', (await mine('Ben', secretB)).json.wins.length === 1 && (await mine('Ben', secretB)).json.note === null)
+  for (const bad of ['Card 4111 1111 1111 1111', 'acct 1234567890123', '4111-1111-1111-1111']) {
+    const r = await pay({ action: 'set', note: bad })
+    check(`S28o2 "${bad}" is refused: no card or bank numbers`, r.status === 400 && r.json?.reason === 'looks_like_account_number', String(r.status))
+  }
+  for (const fine of ['Venmo @sam', 'Zelle 480-555-0123', 'paypal.me/sam123', 'Cash App $sam']) {
+    const r = await pay({ action: 'set', note: fine })
+    check(`S28o3 "${fine}" is fine`, r.status === 200, String(r.status))
+  }
   check('S28p an unknown action is a 400', (await pay({ action: 'nope' })).status === 400)
   check('S28q a malformed guest secret is a 400', (await pay({ action: 'mine', bidderId: 'Ben', bidderSecret: 'short' })).status === 400)
   const cross = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/payment`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ action: 'set', note: 'Send it to me' }) })

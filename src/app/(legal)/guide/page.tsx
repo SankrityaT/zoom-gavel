@@ -63,7 +63,7 @@ export default function Guide() {
         <li>A red banner and a sound tell you the moment you are outbid. The clock beeps when it runs low and ticks for the last five seconds.</li>
         <li>If there is a Buy Now price, Buy it now takes the lot at once; tap twice to confirm.</li>
         <li>If you win, a green card shows what you owe and the host’s payment line, with a Copy button. Send the payment yourself, outside Gavel.</li>
-        <li>Your own bid amount is shown only to you and the host. The speaker button at the top mutes the sounds.</li>
+        <li>Your own bid amount is shown only to you and the host. Sounds are off by default inside Zoom; tap the speaker button at the top to turn them on, and again to mute them.</li>
       </ol>
       <h3>Bidding from a browser</h3>
       <p>

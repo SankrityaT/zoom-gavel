@@ -86,9 +86,9 @@ export function Ending() {
           <div className="footer-about">
             <span className="footer-brand">
               <Image src={logoMark} alt="" width={30} height={30} />
-              Zoom Gavel
+              Gavel
             </span>
-            <p>Live bidding inside a Zoom meeting. An ASU Next Lab and Zoom fellowship project.</p>
+            <p>Live bidding inside a Zoom meeting. An independent app built at ASU Next Lab. Not made or endorsed by Zoom.</p>
           </div>
           <div>
             <h4>Product</h4>
@@ -111,7 +111,7 @@ export function Ending() {
             </a>
           </div>
           <div className="footer-legal">
-            <span>&copy; 2026 Zoom Gavel.</span>
+            <span>&copy; 2026 Gavel.</span>
             <span>Every screen is Gavel itself, with made-up bidders and lots.</span>
           </div>
         </div>

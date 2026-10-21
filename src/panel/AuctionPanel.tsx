@@ -19,7 +19,8 @@ import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
 import { outcomeLabel } from '@/lib/gavel/results'
 import type { LeaderEntry, QueueItem, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
 import logo from '@/marketing/assets/logo.png'
-import { playCue, useCues, useMuted, type Alert } from './cues'
+import { playCue, setCuesDefaultMuted, useCues, useMuted, type Alert } from './cues'
+import { SUPPORT_EMAIL } from '@/legal/contact'
 import { RollingNumber, useFlip } from './motion'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
@@ -80,6 +81,9 @@ export default function AuctionPanel({ sessionKey, bidderName, inZoom, roleHint,
   const auction = useAuctionSession(sessionKey, bidderName, inZoom)
   const { sync } = auction
   const { alert, dismiss } = useCues(sync.phase === 'live' ? sync.state : null, auction.selfKey)
+  useEffect(() => {
+    setCuesDefaultMuted(inZoom)
+  }, [inZoom])
 
   return (
     <section className="gv" aria-label="Live auction">
@@ -240,6 +244,9 @@ function LivePanel({
         </>
       )}
       {canHost && <Receipt state={state} sessionKey={sessionKey} />}
+      <p className="gv-report">
+        Something wrong with this auction? Tell us at <a href={`mailto:${SUPPORT_EMAIL}?subject=Gavel%20report`}>{SUPPORT_EMAIL}</a>
+      </p>
     </>
   )
 }
@@ -1211,7 +1218,7 @@ function PaySetup({ sessionKey }: { sessionKey: string }) {
     >
       <p className="gv-pay-title">
         How winners pay
-        <span>Only winners see this. Gavel never takes the money.</span>
+        <span>Only winners see this. Gavel never takes the money, so never put in a card or bank number.</span>
       </p>
       <div className="gv-pay-row">
         <input

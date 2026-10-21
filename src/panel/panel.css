@@ -1179,6 +1179,19 @@
   color: var(--ink-2);
 }
 
+.gv-report {
+  margin: 28px 2px 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.gv-report a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
 /* ---- how winners pay ---- */
 .gv-pay-setup {
   margin-top: 14px;

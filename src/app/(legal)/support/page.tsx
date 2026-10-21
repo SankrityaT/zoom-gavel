@@ -63,8 +63,8 @@ export default function Support() {
 
       <h3>I don’t hear sounds</h3>
       <p>
-        Sounds start after your first tap or click in the panel. Check the speaker button at the top right of the panel isn’t muted,
-        and that the Zoom client’s own volume is up.
+        Inside Zoom, sounds start off. Tap the speaker button at the top right of the panel to turn them on (and once anywhere in the
+        panel, because browsers only play sound after a tap), then check the Zoom client’s own volume is up.
       </p>
 
       <h3>I want my data removed</h3>

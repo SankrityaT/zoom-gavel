@@ -2,7 +2,7 @@
 // pages, so they must stay true: change the address here and nowhere else.
 export const SUPPORT_EMAIL = 'sankritya.apps@gmail.com'
 export const DEVELOPER = 'Sankritya Thakur'
-export const PRODUCT = 'Zoom Gavel'
+export const PRODUCT = 'Gavel'
 export const APP_NAME = 'Gavel for Zoom Meetings'
 export const SITE = 'https://gavel-app.sankrityat.com'
 export const UPDATED = 'October 19, 2026'

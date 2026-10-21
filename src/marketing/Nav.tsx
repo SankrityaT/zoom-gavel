@@ -111,7 +111,7 @@ export default function Nav() {
       <div className="nav-bar">
         <a className="nav-brand" href="#top" onClick={() => setOpen(false)}>
           <Image src={logoMark} alt="" width={30} height={30} />
-          Zoom Gavel
+          Gavel
         </a>
         <div className="nav-links">
           {SECTIONS.map((section) => (

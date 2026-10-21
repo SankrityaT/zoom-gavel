@@ -18,6 +18,10 @@ const ALERT_MS = 4500
 let context: AudioContext | null = null
 let muted = false
 let mutedLoaded = false
+// Zoom asks apps not to make unexpected computer audio, so inside the Zoom
+// client sounds start off until the person turns them on. A choice already
+// made (either way) always wins.
+let defaultMuted = false
 const muteListeners = new Set<() => void>()
 // The landing page runs the panel as a demo and keeps it quiet, without
 // touching the mute choice a bidder made for real meetings.
@@ -31,9 +35,25 @@ function loadMuted() {
   if (mutedLoaded) return
   mutedLoaded = true
   try {
-    muted = window.localStorage.getItem(MUTE_KEY) === '1'
+    const stored = window.localStorage.getItem(MUTE_KEY)
+    muted = stored === null ? defaultMuted : stored === '1'
   } catch {
-    muted = false
+    muted = defaultMuted
+  }
+}
+
+export function setCuesDefaultMuted(next: boolean) {
+  defaultMuted = next
+  let stored: string | null = null
+  try {
+    stored = window.localStorage.getItem(MUTE_KEY)
+  } catch {
+    stored = null
+  }
+  if (stored === null && muted !== next) {
+    muted = next
+    mutedLoaded = true
+    for (const listener of muteListeners) listener()
   }
 }
 

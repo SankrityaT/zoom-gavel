@@ -261,7 +261,7 @@ function App() {
       {debug && (
         <section className="app-panel gavel-debug" aria-labelledby="page-title">
         <header className="topbar">
-            <Link className="wordmark" href="/" aria-label="Zoom Gavel home">
+            <Link className="wordmark" href="/" aria-label="Gavel home">
               <span>zoom</span> Gavel
             </Link>
             <span className="build-tag">WEEK 1</span>

@@ -166,6 +166,9 @@ export async function savePaymentNote(
   if (res.status === 429) return { ok: false, error: 'Too many requests. Try again in a moment.' }
   if (res.status === 401) return { ok: false, error: 'Zoom has not confirmed who you are. Close Gavel and open it again from Apps.' }
   if (res.status === 403) return { ok: false, error: 'Only the meeting host can change this.' }
+  if (res.status === 400 && (json as { reason?: string }).reason === 'looks_like_account_number') {
+    return { ok: false, error: 'Use a handle or a link, such as Venmo @yourname. Card and bank numbers are not allowed.' }
+  }
   return { ok: false, error: 'Could not save that. Try again.' }
 }
 

@@ -73,6 +73,10 @@ export async function POST(
           else return badRequest('note must be 1 to 300 characters')
         }
       }
+      // A handle or a link, never a card or bank number: Gavel must not end up holding that.
+      if (note !== null && /\d(?:[ -]?\d){12,}/.test(note)) {
+        return NextResponse.json({ error: 'no card or bank numbers', reason: 'looks_like_account_number' }, { status: 400 })
+      }
       const outcome = await setPaymentNote(uuid, host.hostKey, note)
       if (outcome.ok) return NextResponse.json({ ok: true, note: outcome.note })
       switch (outcome.reason) {

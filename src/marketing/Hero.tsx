@@ -191,7 +191,7 @@ export default function Hero() {
   useQuietCues()
 
   return (
-    <section className="hero" aria-label="Zoom Gavel, live bidding inside Zoom meetings">
+    <section className="hero" aria-label="Gavel, live bidding inside Zoom meetings">
       <div className="hero-atmosphere" aria-hidden="true">
         <Image src={heroAtmosphere} alt="" fill sizes="100vw" className="hero-atmosphere-image" />
       </div>
