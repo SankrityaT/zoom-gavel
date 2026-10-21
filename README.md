@@ -193,7 +193,10 @@ Max bids. A bidder may set a ceiling for the round (`POST
 /api/session/[key]/max`). After every bid or ceiling change the server
 resolves the contest inside the same transaction, the way a live auction
 would: the highest ceiling leads at one $25 step above the runner-up's
-ceiling, never above its own, and a tie between two ceilings stays with
+ceiling, never above its own, and the price never stays below the reserve
+while the leader's ceiling reaches it (a lone $600 ceiling on a $500 reserve
+sells at $500; without that step the lot closed unsold at the opening price),
+and a tie between two ceilings stays with
 whoever led. A plain hand bid that lands exactly on someone's hidden ceiling
 loses to it: the ceiling, committed first, takes the lead at that price (the
 one place two ledger rows carry the same amount, the second always automatic;
@@ -208,6 +211,12 @@ stream opened never arrived). So each live room also reads its session every 3
 seconds (10 when idle) with the service role and emits whatever the broadcasts
 missed, one read per room however many people watch. The same read closes a
 round whose clock ran out. A stream is refused for a session nobody created.
+
+Breakout rooms. Inside one, Zoom's app context carries the room's own UUID in
+`mid` and the main meeting's in `pid`, and `getMeetingUUID` returns the same
+pair (`meetingUUID`, `parentUUID`). The webhook names only the main meeting,
+so both the panel and the server key the auction on the main meeting.
+Otherwise a breakout room became its own session with no verified host.
 
 Removal. Zoom's `app_deauthorized` notice (same signed webhook) calls
 `purge_zoom_user` with the keyed hash of the Zoom id: max bids are deleted,
@@ -302,10 +311,13 @@ client-chosen even for verified bidders. Session broadcasts replace
 bids are the host's.
 
 Rate limits live in Postgres (fixed windows via `rate_limit_hit`) so they
-hold across serverless instances: bids 120 per 10s per IP and 10 per 5s per
-bidder per session, round start/stop 60 per minute per IP, init and stream
-connects 120 per minute per IP. Exceeding one returns 429 with
-`Retry-After`. A limiter error fails open.
+hold across serverless instances, and are sized for a meeting behind one
+address (a class, a company): bids 400 per 10s per IP and 10 per 5s per bidder
+per session, identity 600 per minute, stream connects 120 per minute, round
+start/stop 60 per minute, queue 90, payment 300, and Zoom's own webhook
+traffic is never throttled (only requests that fail verification count).
+Exceeding one returns 429 with `Retry-After`; the panel retries its identity
+call through a limit. A limiter error fails open.
 
 Expiry. A pg_cron job (`gavel-expire-sessions`, hourly) runs
 `expire_sessions()`: demo and join-link sessions are deleted 24h after
@@ -338,7 +350,9 @@ scenario. The suite itself counts against the per-IP round limit, so wait
 a minute between back-to-back runs.
 
 Environment: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, `ZOOM_CLIENT_ID` (optional; turns
+`SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, `ZOOM_VERIFICATION_TOKEN` (optional;
+accepts Zoom's older Authorization-header signing for the app-removal notice,
+which Zoom's docs leave unclear), `ZOOM_CLIENT_ID` (optional; turns
 on "Sign in with Zoom"), `ZOOM_CLIENT_SECRET`
 (the Development app's secret for the tunnel, the Production app's for
 Vercel Production), and `ZOOM_WEBHOOK_SECRET_TOKEN` (the app's event

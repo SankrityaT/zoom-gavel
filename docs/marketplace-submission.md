@@ -28,7 +28,8 @@ Known limits, stated openly (the listing and legal pages say so):
 - Not made by Zoom, and no payment is processed; the host's payment line is plain text that Gavel cannot verify.
 - No third-party penetration test and no commercial DAST scan.
 - Browser guests are identified by name plus a private browser secret; Sign in with Zoom gives a verified identity.
-- Co-host support is built and tested against signed notices but was not run in a real meeting.
+- Co-host support is built and tested against signed notices but was not run in a real meeting. Zoom's role-change notice carries a user id only for people signed in to Zoom (and may withhold it for people outside the host's organisation), so only those people can be recognised as co-hosts. Someone made co-host before the app was open is not recognised until the role changes again.
+- Zoom sends the app-removed notice only for a published app, so the removal step in the reviewer notes will not show anything during review. Its signing is not documented, so the handler accepts the standard signature and, if `ZOOM_VERIFICATION_TOKEN` is set, the older Authorization header, and logs which headers arrived when it refuses one.
 
 ## Listing
 

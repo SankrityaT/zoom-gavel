@@ -4,7 +4,13 @@
 // Web Crypto only, and MACs are compared by subtle.verify, never as strings.
 
 const encoder = new TextEncoder()
-const MAX_SKEW_SECONDS = 5 * 60
+// Zoom retries a failed delivery after 5, 20 and 60 minutes, and does not say
+// whether a retry carries a fresh timestamp. A tight window would reject the
+// retry of an event we deliberately answered 500 to. Every event we act on is
+// idempotent or ordered (the host is set to the same host, co-host rows keep
+// the newest event_ts, erasure repeats harmlessly), so a replay inside this
+// window can change nothing that was not already true.
+const MAX_SKEW_SECONDS = 65 * 60
 
 async function hmacKey(secret: string, usages: KeyUsage[]) {
   return crypto.subtle.importKey(
@@ -55,6 +61,18 @@ export async function verifyZoomWebhook(
     expected,
     encoder.encode(`v0:${timestamp}:${rawBody}`),
   )
+}
+
+// Constant-time equality for two secrets of any length: both are MACed with a
+// throwaway key and the digests compared without early exit.
+export async function secretsMatch(a: string, b: string) {
+  const key = await crypto.subtle.importKey('raw', crypto.getRandomValues(new Uint8Array(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const [da, db] = await Promise.all([crypto.subtle.sign('HMAC', key, encoder.encode(a)), crypto.subtle.sign('HMAC', key, encoder.encode(b))])
+  const x = new Uint8Array(da)
+  const y = new Uint8Array(db)
+  let diff = 0
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i]
+  return diff === 0
 }
 
 export type ZoomWebhookEvent = {

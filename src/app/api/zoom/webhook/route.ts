@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { bidderKey, meetingSessionKey } from '@/lib/gavel/auth'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
 import { purgeZoomUser, setCohost, setMeetingHost } from '@/lib/gavel/server'
-import { hmacHex, verifyZoomWebhook, type ZoomWebhookEvent } from '@/lib/gavel/zoom-webhook'
+import { hmacHex, secretsMatch, verifyZoomWebhook, type ZoomWebhookEvent } from '@/lib/gavel/zoom-webhook'
 
 const MAX_BODY_BYTES = 64 * 1024
 
@@ -24,9 +24,6 @@ export async function POST(request: Request) {
   if (!secretToken || !sessionSecret) {
     return NextResponse.json({ error: 'webhook not configured' }, { status: 503 })
   }
-
-  const limited = await enforce([rule(`webhook:ip:${clientIp(request)}`, LIMITS.webhookPerIp)])
-  if (limited) return limited
 
   const declared = Number(request.headers.get('content-length') ?? 0)
   if (declared > MAX_BODY_BYTES) {
@@ -52,21 +49,48 @@ export async function POST(request: Request) {
       break
     }
   }
-  if (matchedToken === null) return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
 
   let event: ZoomWebhookEvent
   try {
     event = JSON.parse(rawBody) as ZoomWebhookEvent
   } catch {
-    return NextResponse.json({ error: 'body must be JSON' }, { status: 400 })
+    event = {}
   }
+
+  // Zoom's documentation does not say how the app-removed notice is signed,
+  // and developers report both the x-zm-signature scheme and the older
+  // Authorization header carrying the app's Verification Token. If the app
+  // has a verification token configured, either is accepted for that one event.
+  let authentic = matchedToken !== null
+  if (!authentic && event.event === 'app_deauthorized') {
+    const verificationToken = process.env.ZOOM_VERIFICATION_TOKEN
+    const presented = request.headers.get('authorization')
+    if (verificationToken && presented && (await secretsMatch(presented, verificationToken))) authentic = true
+  }
+
+  // The limit counts only requests that fail verification, so real Zoom traffic
+  // (many customers share a few Zoom addresses) is never throttled, while
+  // junk from one address still is.
+  if (!authentic) {
+    const limited = await enforce([rule(`webhook:ip:${clientIp(request)}`, LIMITS.webhookPerIp)])
+    if (limited) return limited
+    if (event.event === 'app_deauthorized') {
+      // The one event whose signing we cannot confirm: record what arrived, never values.
+      console.warn(
+        'app_deauthorized rejected; headers present:',
+        ['x-zm-signature', 'x-zm-request-timestamp', 'authorization'].filter((h) => request.headers.has(h)).join(',') || 'none',
+      )
+    }
+    return NextResponse.json({ error: 'invalid signature' }, { status: 401 })
+  }
+  if (typeof event.event !== 'string') return NextResponse.json({ error: 'body must be JSON' }, { status: 400 })
 
   if (event.event === 'endpoint.url_validation') {
     const plainToken = event.payload?.plainToken
     if (typeof plainToken !== 'string' || !plainToken) {
       return NextResponse.json({ error: 'plainToken required' }, { status: 400 })
     }
-    return NextResponse.json({ plainToken, encryptedToken: await hmacHex(matchedToken, plainToken) })
+    return NextResponse.json({ plainToken, encryptedToken: await hmacHex(matchedToken ?? secretToken, plainToken) })
   }
 
   if (event.event === 'meeting.started') {

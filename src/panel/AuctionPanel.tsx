@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import {
   fetchMyPayment,
@@ -21,6 +21,7 @@ import type { LeaderEntry, QueueItem, RoundResult as RoundRecord, SessionState }
 import logo from '@/marketing/assets/logo.png'
 import { playCue, setCuesDefaultMuted, useCues, useMuted, type Alert } from './cues'
 import { SUPPORT_EMAIL } from '@/legal/contact'
+import { copyText, hasCents, parseDollars } from './money'
 import { RollingNumber, useFlip } from './motion'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
@@ -145,8 +146,8 @@ function Header({ auction }: { auction: AuctionSessionHook }) {
         <button
           className="gv-mute"
           type="button"
-          aria-pressed={muted}
-          aria-label={muted ? 'Turn sounds on' : 'Mute sounds'}
+          aria-pressed={!muted}
+          aria-label="Sounds"
           title={muted ? 'Turn sounds on' : 'Mute sounds'}
           onClick={toggleMuted}
         >
@@ -198,7 +199,13 @@ function LivePanel({
 }) {
   const { session, viewer } = state
   const isOpen = session.status === 'open'
-  const canHost = viewer.canControl
+  // Before anyone is the host (the meeting started before the app was added),
+  // the server lets the first verified person claim it. Zoom's own role hint
+  // keeps a plain attendee from being offered that by accident. It is only a
+  // hint: with no hint at all, nothing changes.
+  const roleKnownNotHost = roleHint !== null && roleHint !== 'host' && roleHint !== 'coHost'
+  const awaitingHost = !session.sandbox && !session.hostClaimed && roleKnownNotHost
+  const canHost = viewer.canControl && !awaitingHost
   // Zoom says this person is the host, but the server has not confirmed it.
   const hostUnconfirmed =
     !canHost && !session.sandbox && (roleHint === 'host' || roleHint === 'coHost') && !session.hostVerified
@@ -219,13 +226,12 @@ function LivePanel({
       {isOpen && <BidDock key={session.roundNo} state={state} auction={auction} />}
       {isOpen && canHost && <EndRound auction={auction} upNext={session.upNext} />}
 
-      {session.status === 'closed' && (
-        <PayCard key={session.roundNo} state={state} auction={auction} sessionKey={sessionKey} bidderName={bidderName} />
+      {session.status !== 'idle' && (
+        <PayCard state={state} auction={auction} sessionKey={sessionKey} bidderName={bidderName} />
       )}
 
       {session.status === 'closed' && !canHost && (
         <p className="gv-after">
-          {session.leader !== null && session.reserveMet ? 'The host will be in touch about payment. ' : ''}
           {session.upNext === null ? (
             'The next lot starts when the host is ready.'
           ) : (
@@ -274,6 +280,10 @@ function Waiting({ hostUnconfirmed, upNext }: { hostUnconfirmed: boolean; upNext
 type Clock = { nowMs: number; wallMs: number; ratio: number }
 
 function useRoundClock(auction: AuctionSessionHook, endsAt: string | null, roundNo: number): Clock {
+  // auction is a new object on every render; its clock function is stable, and
+  // depending on the whole object re-based the progress bar to full on every
+  // push, so it never visibly drained.
+  const { now } = auction
   const [clock, setClock] = useState<Clock>(() => ({ nowMs: 0, wallMs: 0, ratio: 0 }))
   const maxRemaining = useRef(0)
 
@@ -282,7 +292,7 @@ function useRoundClock(auction: AuctionSessionHook, endsAt: string | null, round
     const endsAtMs = endsAt ? new Date(endsAt).getTime() : null
 
     function sample() {
-      const nowMs = auction.now()
+      const nowMs = now()
       const remaining = endsAtMs === null ? 0 : Math.max(0, endsAtMs - nowMs)
       if (remaining > maxRemaining.current) maxRemaining.current = remaining
       const ratio = maxRemaining.current > 0 ? remaining / maxRemaining.current : 0
@@ -292,7 +302,7 @@ function useRoundClock(auction: AuctionSessionHook, endsAt: string | null, round
     sample()
     const id = setInterval(sample, 250)
     return () => clearInterval(id)
-  }, [auction, endsAt, roundNo])
+  }, [now, endsAt, roundNo])
 
   return clock
 }
@@ -409,7 +419,7 @@ function TagClock({ state, auction }: { state: SessionState; auction: AuctionSes
       <span className="gv-clock-bar" aria-hidden="true">
         <i style={{ transform: `scaleX(${ratio})` }} />
       </span>
-      <span className="gv-clock-note">{extended ? `Extended ${session.extendBySeconds} sec` : 'left'}</span>
+      <span className="gv-clock-note">{extended ? 'Time added' : 'left'}</span>
     </div>
   )
 }
@@ -550,8 +560,8 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
   const [settingMax, setSettingMax] = useState(false)
   const [maxTyped, setMaxTyped] = useState('')
   const [savingMax, setSavingMax] = useState(false)
-  const maxValue = Number.parseInt(maxTyped.replace(/[^0-9]/g, ''), 10)
-  const maxValid = Number.isInteger(maxValue) && maxValue >= maxFloor && maxValue <= bidCeiling
+  const maxValue = parseDollars(maxTyped)
+  const maxValid = maxValue !== null && maxValue >= maxFloor && maxValue <= bidCeiling
   const maxPassed = maxBid !== null && !youLead && session.currentBid >= maxBid
 
   async function saveMax(value: number | null) {
@@ -622,8 +632,33 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
     }
   }
 
-  const typedValue = Number.parseInt(typed.replace(/[^0-9]/g, ''), 10)
-  const typedValid = Number.isInteger(typedValue) && typedValue >= minBid && typedValue <= bidCeiling
+  const typedValue = parseDollars(typed)
+  const typedValid = typedValue !== null && typedValue >= minBid && typedValue <= bidCeiling
+  // Why Bid is greyed out, when a number has been typed.
+  const typedProblem =
+    typed.trim() === ''
+      ? ''
+      : hasCents(typed)
+        ? 'Whole dollars only, such as 250.'
+        : typedValue === null
+          ? 'Type a whole number of dollars, such as 250.'
+          : typedValue < minBid
+            ? `The lowest bid is now ${formatUsd(minBid)}.`
+            : typedValue > bidCeiling
+              ? `The most you can bid is ${formatUsd(bidCeiling)}.`
+              : ''
+  const maxProblem =
+    maxTyped.trim() === ''
+      ? ''
+      : hasCents(maxTyped)
+        ? 'Whole dollars only, such as 400.'
+        : maxValue === null
+          ? 'Type a whole number of dollars, such as 400.'
+          : maxValue < maxFloor
+            ? `Your max has to be at least ${formatUsd(maxFloor)}.`
+            : maxValue > bidCeiling
+              ? `Your max has to stay under ${formatUsd(bidCeiling + 1)}.`
+              : ''
 
   return (
     <div className="gv-dock">
@@ -633,7 +668,7 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
             className="gv-type"
             onSubmit={(event) => {
               event.preventDefault()
-              if (typedValid) void bid(typedValue)
+              if (typedValid && typedValue !== null) void bid(typedValue)
             }}
           >
             <label className="gv-type-field">
@@ -648,7 +683,15 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
               />
             </label>
             <button className="gv-bid" type="submit" disabled={!typedValid || placing}>
-              {placing ? 'Placing…' : 'Bid'}
+              {placing ? (
+                'Placing…'
+              ) : typedValid && typedValue !== null ? (
+                <>
+                  Bid <b>{formatUsd(typedValue)}</b>
+                </>
+              ) : (
+                'Bid'
+              )}
             </button>
           </form>
         ) : (
@@ -689,12 +732,18 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
         <p className="gv-dock-note">The next bid reaches the Buy Now price.</p>
       )}
 
+      {typing && typedProblem && (
+        <p className="gv-message gv-message--calm" role="status">
+          {typedProblem}
+        </p>
+      )}
+
       {settingMax && (
         <form
           className="gv-max-form"
           onSubmit={(event) => {
             event.preventDefault()
-            if (maxValid) void saveMax(maxValue)
+            if (maxValid && maxValue !== null) void saveMax(maxValue)
           }}
         >
           <p>
@@ -717,6 +766,11 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
               {savingMax ? 'Saving…' : 'Set max'}
             </button>
           </div>
+          {maxProblem && (
+            <p className="gv-message gv-message--calm" role="status">
+              {maxProblem}
+            </p>
+          )}
         </form>
       )}
 
@@ -740,7 +794,7 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
             {typing ? 'Use the quick bid' : 'Enter an amount'}
           </button>
         )}
-        {canBid && (
+        {(canBid || settingMax) && (
           <button className="gv-link" type="button" onClick={() => setSettingMax((on) => !on)}>
             {settingMax ? 'Cancel' : maxBid === null ? 'Set a max bid' : maxPassed ? 'Raise my max' : 'Change my max'}
           </button>
@@ -789,7 +843,9 @@ function EndRound({ auction, upNext }: { auction: AuctionSessionHook; upNext: st
     setMessage('')
     try {
       const result = await auction.stopRound()
-      if (!result.ok) setMessage(result.error ?? 'Could not end the round. Try again.')
+      if (!result.ok) setMessage(result.error === 'internal error' || !result.error ? 'Could not end the round. Try again.' : result.error)
+    } catch {
+      setMessage('That did not reach the auction. Check your connection and try again.')
     } finally {
       setBusy(false)
     }
@@ -844,7 +900,7 @@ function Slot({
         onChange={(event) => onChange(money ? event.target.value.replace(/[^0-9]/g, '') : event.target.value)}
         placeholder={placeholder}
         inputMode={money ? 'numeric' : 'text'}
-        maxLength={money ? 9 : 120}
+        maxLength={money ? 7 : 120}
         size={Math.max(shown.length, money ? 2 : 6)}
         aria-label={label}
       />
@@ -1062,9 +1118,13 @@ function HostSetup({
               ? 'Zoom has not confirmed who you are. Close Gavel and open it again from Apps.'
               : result.status === 403
                 ? 'Only the meeting host can start a lot.'
-                : (result.error ?? 'Could not start the lot. Try again.'),
+                : result.error && result.error !== 'internal error'
+                  ? result.error
+                  : 'Could not start the lot. Try again.',
         )
       }
+    } catch {
+      setMessage('That did not reach the auction. Check your connection and try again.')
     } finally {
       setBusy(false)
     }
@@ -1255,44 +1315,54 @@ function PayCard({
   bidderName: string
 }) {
   const { session } = state
-  const sold = session.leader !== null && session.reserveMet
+  const sold = session.status === 'closed' && session.leader !== null && session.reserveMet
   const youWon = sold && auction.selfKey !== null && session.leader?.bidderKey === auction.selfKey
   const [mine, setMine] = useState<MyPayment | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'yes' | 'no' | null>(null)
+  const needsNote = mine !== null && mine.wins.length > 0 && !mine.note
+
+  // Ask on opening the panel (a winner who reloads still sees what they owe),
+  // each time they win another lot, and, while the host has not yet said how to
+  // pay, whenever the panel comes back into view or every 15 seconds.
+  const load = useCallback(() => {
+    return fetchMyPayment(sessionKey, bidderName)
+      .then((next) => (next ? setMine(next) : undefined))
+      .catch(() => {
+        // Transient; the next ask will catch up.
+      })
+  }, [sessionKey, bidderName])
 
   useEffect(() => {
-    if (!youWon) return
-    let active = true
-    fetchMyPayment(sessionKey, bidderName)
-      .then((next) => {
-        if (active) setMine(next)
-      })
-      .catch(() => {
-        // Transient; the card simply stays out of the way.
-      })
-    return () => {
-      active = false
-    }
-  }, [youWon, sessionKey, bidderName, session.roundNo])
+    void load()
+  }, [load, youWon, session.roundNo])
 
-  if (!youWon || !mine || mine.wins.length === 0) return null
+  useEffect(() => {
+    if (!needsNote) return
+    const id = setInterval(() => void load(), 15_000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [needsNote, load])
+
+  if (!mine || mine.wins.length === 0) return null
   const owed = mine.wins.reduce((sum, win) => sum + win.finalBid, 0)
 
   async function copy() {
     if (!mine?.note) return
-    try {
-      await navigator.clipboard.writeText(mine.note)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // The Zoom client blocks the clipboard: the text is selectable by hand.
-    }
+    const ok = await copyText(mine.note)
+    setCopied(ok ? 'yes' : 'no')
+    if (ok) setTimeout(() => setCopied(null), 2000)
   }
 
   return (
     <div className="gv-paycard">
       <p className="gv-paycard-title">
-        {mine.wins.length === 1 ? 'You won it' : `You have won ${mine.wins.length} lots`}
+        {mine.wins.length === 1 ? (youWon ? 'You won it' : 'You won a lot') : `You have won ${mine.wins.length} lots`}
         <span>
           {mine.wins.length === 1
             ? `${mine.wins[0].itemName} for ${formatUsd(mine.wins[0].finalBid)}`
@@ -1315,9 +1385,10 @@ function PayCard({
           <div className="gv-paycard-note">
             <span>{mine.note}</span>
             <button className="gv-pill" type="button" onClick={() => void copy()}>
-              {copied ? 'Copied' : 'Copy'}
+              {copied === 'yes' ? 'Copied' : 'Copy'}
             </button>
           </div>
+          {copied === 'no' && <p className="gv-paycard-fine">Copying is blocked here. Select the text above to copy it.</p>}
           <p className="gv-paycard-fine">Gavel does not take payment. Check it is the person you expect before you send anything.</p>
         </>
       ) : (
@@ -1337,11 +1408,10 @@ function Invite({ sessionKey, onInviteMeeting }: { sessionKey: string; onInviteM
       : `${window.location.origin}/zoom-test?session=${encodeURIComponent(sessionKey)}`
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(shareUrl)
+    if (await copyText(shareUrl)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
+    } else {
       // The Zoom client blocks the clipboard: show the link to select by hand.
       setShowLink(true)
     }

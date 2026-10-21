@@ -509,6 +509,40 @@ await scenario('S28', 'how winners pay', async () => {
   check('S28r another site cannot set it (403)', cross.status === 403, String(cross.status))
 })
 
+await scenario('S29', 'a max bid that reaches the reserve makes the lot sell', async () => {
+  const setCeiling = (k, who, amount) => api(`${encodeURIComponent(k)}/max`, { method: 'POST', body: { amount, bidderId: who, bidderSecret: 'reservesecret0123456789' } })
+  // A lone ceiling above the reserve: the price rises to the reserve.
+  let k = key(); await init(k); await start(k, { seconds: 30, openingBid: 100, reservePrice: 500 })
+  let r = await setCeiling(k, 'Rich', 600)
+  check('S29a a lone $600 ceiling on a $500 reserve lifts the price to the reserve', r.status === 200 && r.json.state.session.currentBid === 500 && r.json.state.session.reserveMet === true, JSON.stringify([r.status, r.json?.state?.session?.currentBid, r.json?.state?.session?.reserveMet]))
+  let st = (await stop(k)).json?.state
+  check('S29b and the round sells', st?.session.status === 'closed' && st.session.leader?.name === 'Rich', JSON.stringify([st?.session.status, st?.session.leader?.name]))
+  const rounds = (await api(`${encodeURIComponent(k)}/results`)).json?.rounds ?? []
+  check('S29c the results record it as sold at the reserve', rounds[0]?.outcome === 'sold' && rounds[0]?.finalBid === 500, JSON.stringify(rounds[0]))
+
+  // A ceiling below the reserve changes nothing.
+  k = key(); await init(k); await start(k, { seconds: 30, openingBid: 100, reservePrice: 500 })
+  r = await setCeiling(k, 'Thrifty', 400)
+  check('S29d a $400 ceiling on a $500 reserve stays at the opening price, reserve not met', r.json.state.session.currentBid === 100 && r.json.state.session.reserveMet === false, JSON.stringify([r.json?.state?.session?.currentBid, r.json?.state?.session?.reserveMet]))
+
+  // Two ceilings: the winner pays one step over the other, but never less than the reserve.
+  k = key(); await init(k); await start(k, { seconds: 30, openingBid: 100, reservePrice: 500 })
+  await setCeiling(k, 'Low', 300)
+  r = await setCeiling(k, 'High', 700)
+  check('S29e the higher ceiling wins at the reserve, not at $325', r.json.state.session.currentBid === 500 && r.json.state.session.leader?.name === 'High', JSON.stringify([r.json?.state?.session?.currentBid, r.json?.state?.session?.leader?.name]))
+  // The ceiling is never exceeded.
+  k = key(); await init(k); await start(k, { seconds: 30, openingBid: 100, reservePrice: 500 })
+  r = await setCeiling(k, 'Exact', 500)
+  check('S29f a ceiling exactly at the reserve sells at the reserve', r.json.state.session.currentBid === 500 && r.json.state.session.reserveMet === true)
+  // No reserve: behaviour is unchanged.
+  k = key(); await init(k); await start(k, { seconds: 30, openingBid: 100 })
+  r = await setCeiling(k, 'Plain', 600)
+  check('S29g with no reserve a lone ceiling still opens at the opening price', r.json.state.session.currentBid === 100, String(r.json?.state?.session?.currentBid))
+  // A bad name is a 400, not a 500.
+  const nul = await api(encodeURIComponent(k), { method: 'POST', body: { amount: 150, bidderId: 'Bad\u0000Name' } })
+  check('S29h a NUL character in a name is a 400', nul.status === 400, String(nul.status))
+})
+
 if (WEBHOOK_TOKEN && SESSION_SECRET) {
   const signed = (bodyObj, { token = WEBHOOK_TOKEN, ts = Math.floor(Date.now() / 1000) } = {}) => {
     const body = JSON.stringify(bodyObj)
@@ -527,14 +561,19 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     check('S14a url validation', v.status === 200 && vj.encryptedToken === createHmac('sha256', WEBHOOK_TOKEN).update(plainToken).digest('hex'))
     const forged = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { token: 'wrong' })
     check('S14b forged signature -> 401', forged.status === 401, String(forged.status))
-    const stale = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { ts: Math.floor(Date.now() / 1000) - 600 })
-    check('S14c stale timestamp -> 401', stale.status === 401, String(stale.status))
+    // Zoom retries after 5, 20 and 60 minutes: a retry of an event we answered 500 must still verify.
+    const retried = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { ts: Math.floor(Date.now() / 1000) - 45 * 60 })
+    check('S14c a 45 minute old signed event (a retry) is accepted', retried.status === 200, String(retried.status))
+    const stale = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { ts: Math.floor(Date.now() / 1000) - 2 * 3600 })
+    check('S14c2 a 2 hour old event is refused (401)', stale.status === 401, String(stale.status))
+    const burst = await Promise.all(Array.from({ length: 150 }, () => signed({ event: 'endpoint.url_validation', payload: { plainToken } })))
+    check('S14c3 150 valid events in a burst are never throttled', burst.every((r) => r.status === 200), JSON.stringify(histogram(burst)))
     if (WEBHOOK_TOKEN_2) {
       const second = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { token: WEBHOOK_TOKEN_2 })
       const sj = await second.json()
-      check('S14c2 a second configured token verifies, and answers with itself', second.status === 200 && sj.encryptedToken === createHmac('sha256', WEBHOOK_TOKEN_2).update(plainToken).digest('hex'), String(second.status))
+      check('S14c4 a second configured token verifies, and answers with itself', second.status === 200 && sj.encryptedToken === createHmac('sha256', WEBHOOK_TOKEN_2).update(plainToken).digest('hex'), String(second.status))
       const third = await signed({ event: 'endpoint.url_validation', payload: { plainToken } }, { token: `${WEBHOOK_TOKEN_2}-nope` })
-      check('S14c3 a token that is in neither is refused', third.status === 401, String(third.status))
+      check('S14c5 a token that is in neither is refused', third.status === 401, String(third.status))
     }
 
     const mid = `race-mid-${randomBytes(4).toString('hex')}`
@@ -577,6 +616,15 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const still = await api(`${encodeURIComponent(k)}/results`, { cookie: leaver })
     check('S24f nothing was removed by the forged notice', JSON.stringify(still.json).includes('Leaver Name'))
 
+    if (process.env.VERIFICATION_TOKEN) {
+      // Zoom's docs do not say how this one event is signed; the legacy scheme is a bare Authorization header.
+      const wrongAuth = await fetch(`${BASE_URL}/api/zoom/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'not-the-token' }, body: JSON.stringify({ event: 'app_deauthorized', payload: { user_id: 'userLeaver' } }) })
+      check('S24d2 a removal notice with the wrong Authorization header is refused (401)', wrongAuth.status === 401, String(wrongAuth.status))
+      const rightAuth = await fetch(`${BASE_URL}/api/zoom/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: process.env.VERIFICATION_TOKEN }, body: JSON.stringify({ event: 'app_deauthorized', payload: { user_id: 'userLeaver', account_id: 'acct', client_id: 'cid' } }) })
+      check('S24d3 and with the right verification token it erases the person', rightAuth.status === 200, String(rightAuth.status))
+      const otherEvent = await fetch(`${BASE_URL}/api/zoom/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: process.env.VERIFICATION_TOKEN }, body: JSON.stringify({ event: 'meeting.started', payload: { object: { uuid: 'x', host_id: 'y' } } }) })
+      check('S24d4 the verification token is accepted for no other event', otherEvent.status === 401, String(otherEvent.status))
+    }
     const gone = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver', account_id: 'acct', client_id: 'cid' } })
     check('S24g a signed notice is accepted', gone.status === 200, String(gone.status))
     // The round is over, so its leaderboard is still the live state: the
@@ -942,6 +990,18 @@ if (ZOOM_CLIENT_SECRET) {
     check('S19 missing token -> 400', empty.status === 400, String(empty.status))
     const cross = await fetch(`${BASE_URL}/api/identity`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ context: token }) })
     check('S19 cross-site post -> 403', cross.status === 403, String(cross.status))
+    // Breakout room: mid is the room, pid the main meeting. The auction belongs to the main one.
+    const roomMid = `race-room-${randomBytes(4).toString('hex')}`
+    const mainMid = `race-main-${randomBytes(4).toString('hex')}`
+    const inRoom = await identity(zoomContext({ typ: 'meeting', uid: 'roomUser', mid: roomMid, pid: mainMid, ts: Date.now(), exp: Date.now() + 120_000 }))
+    const roomCookie = (inRoom.headers.get('set-cookie') ?? '').split(';')[0]
+    const mainState = await get(meetingKey(mainMid), roomCookie)
+    check('S19 a context from a breakout room counts as being in the main meeting', mainState.status === 200 || mainState.status === 404, String(mainState.status))
+    const startedMain = await start(meetingKey(mainMid), {}, roomCookie)
+    check('S19 and can use the main meeting\'s auction', startedMain.status === 200 && startedMain.json.state.viewer.inThisMeeting === true, JSON.stringify([startedMain.status, startedMain.json?.state?.viewer]))
+    await stop(meetingKey(mainMid), roomCookie)
+    const roomKeyState = await start(meetingKey(roomMid), {}, roomCookie)
+    check('S19 and is not treated as being in the room\'s own separate auction', roomKeyState.status === 403, String(roomKeyState.status))
     if (ZOOM_CLIENT_SECRET_2) {
       const second = await identity(zoomContext({ typ: 'meeting', uid: 'sdkUser2', mid, ts: Date.now(), exp: Date.now() + 120_000 }, ZOOM_CLIENT_SECRET_2))
       check('S19 a context sealed with the other configured secret is accepted too', second.status === 200, String(second.status))

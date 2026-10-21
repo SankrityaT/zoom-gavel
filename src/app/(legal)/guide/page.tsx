@@ -49,7 +49,8 @@ export default function Guide() {
       <p>
         If you make someone a co-host in Zoom (Participants, More, Make co-host), Gavel is told, and they can run the auction exactly as
         you can: start and end lots, use the queue, see every bidder’s amount and download the results. Their panel says “You’re
-        co-hosting”. If you take the role away, their controls go too. You stay the host throughout.
+        co-hosting”. If you take the role away, their controls go too. You stay the host throughout. Zoom only tells Gavel who a
+        co-host is when they are signed in to Zoom, so a guest without an account cannot be recognised.
       </p>
 
       <h2>Bid (everyone else)</h2>

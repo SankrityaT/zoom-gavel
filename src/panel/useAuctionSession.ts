@@ -256,7 +256,9 @@ export function useAuctionSession(
       const state = existing ?? (await initSession(sessionKey, DEMO_LOT_NAME, DEMO_OPENING_BID))
       applyState(state)
     } catch (error) {
-      setSync({ phase: 'error', message: describeError(error) })
+      // Only a first load has nothing to show. A failed re-read during a
+      // reconnect must not take down a panel that is already live.
+      if (latestState.current === null) setSync({ phase: 'error', message: describeError(error) })
     }
   }, [sessionKey, applyState])
 

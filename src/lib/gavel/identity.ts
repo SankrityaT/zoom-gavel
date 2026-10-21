@@ -43,7 +43,8 @@ export async function issueIdentity(contextToken: string): Promise<IdentityIssue
       {
         v: 1,
         uid: context.uid,
-        mid: context.mid,
+        // One auction per meeting: inside a breakout room that is the main meeting.
+        mid: context.pid ?? context.mid,
         iat: now,
         exp: now + IDENTITY_MAX_AGE_SECONDS * 1000,
       },

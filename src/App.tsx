@@ -162,7 +162,10 @@ function App() {
   // Collaborate UUID (which only the host's start event carries), every
   // in-meeting participant, including guests, can read it. Outside a
   // meeting, a per-browser demo key keeps strangers off each other's rows.
-  const meetingUuid = diagnostics?.meeting?.meetingUUID ?? null
+  // Inside a breakout room meetingUUID is the room's own id and parentUUID is
+  // the main meeting's. The auction, and the host Zoom's webhook names, belong
+  // to the main meeting, so that is the one to key on (the server does the same).
+  const meetingUuid = diagnostics?.meeting?.parentUUID ?? diagnostics?.meeting?.meetingUUID ?? null
   const sessionKey = meetingUuid
     ? `mtg-${toSessionKey(meetingUuid)}`
     : (joinKey ?? fallbackKey)
@@ -179,7 +182,9 @@ function App() {
   const signIn = useBrowserSignIn(check.phase !== 'checking' && !diagnostics)
   const signedName = signIn.me?.signedIn ? signIn.me.name : null
   const bidderId = useMemo(() => {
-    const name = diagnostics?.user?.screenName?.trim() || signedName || 'Guest'
+    // The server refuses a bidderId over 60 characters, and the suffix adds 9,
+    // so a long screen name would otherwise lock the person out of every bid.
+    const name = (diagnostics?.user?.screenName?.trim() || signedName || 'Guest').slice(0, 48).trim() || 'Guest'
     const suffix =
       diagnostics?.user?.participantUUID?.slice(0, 6) ??
       fallbackKey?.slice(-6) ??

@@ -6,16 +6,18 @@ import { rateLimitHit } from './server'
 // rotate names, not addresses); per-identity buckets stop one bidder
 // hammering one session. Generous enough for a meeting behind one NAT.
 export const LIMITS = {
-  bidPerIp: { limit: 120, windowSeconds: 10 },
+  // A class or a company meeting sits behind one address, and the closing
+  // seconds of a lot are when everyone taps at once.
+  bidPerIp: { limit: 400, windowSeconds: 10 },
   bidPerBidder: { limit: 10, windowSeconds: 5 },
   roundPerIp: { limit: 60, windowSeconds: 60 },
   initPerIp: { limit: 120, windowSeconds: 60 },
   streamPerIp: { limit: 120, windowSeconds: 60 },
   resultsPerIp: { limit: 60, windowSeconds: 60 },
   queuePerIp: { limit: 90, windowSeconds: 60 },
-  identityPerIp: { limit: 60, windowSeconds: 60 },
+  identityPerIp: { limit: 600, windowSeconds: 60 },
   oauthPerIp: { limit: 120, windowSeconds: 60 },
-  paymentPerIp: { limit: 60, windowSeconds: 60 },
+  paymentPerIp: { limit: 300, windowSeconds: 60 },
   webhookPerIp: { limit: 120, windowSeconds: 60 },
 } as const
 

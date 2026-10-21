@@ -38,7 +38,8 @@ export default function Support() {
 
       <h3>I’m a co-host but I have no host controls</h3>
       <p>
-        Zoom tells Gavel about a co-host at the moment the role is given. If you were made co-host before you opened Gavel and it still
+        Zoom tells Gavel about a co-host at the moment the role is given, and only when the person is signed in to Zoom (it does not
+        identify guests who joined without an account). If you were made co-host before you opened Gavel and it still
         shows no controls, ask the host to remove your co-host role and give it again (Participants, More, Make co-host), then close and
         reopen Gavel from Apps.
       </p>

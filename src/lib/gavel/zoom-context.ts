@@ -10,7 +10,10 @@
 
 export type ZoomAppContext = {
   uid: string
+  /** The meeting the app is open in. In a breakout room this is the room's own UUID. */
   mid: string | null
+  /** The main meeting's UUID, returned only inside a breakout room. */
+  pid: string | null
   typ?: string
   act?: string
   ts?: number
@@ -86,6 +89,7 @@ export async function decryptZoomContext(
   return {
     uid: parsed.uid,
     mid: typeof parsed.mid === 'string' && parsed.mid ? parsed.mid : null,
+    pid: typeof parsed.pid === 'string' && parsed.pid ? parsed.pid : null,
     typ: typeof parsed.typ === 'string' ? parsed.typ : undefined,
     act: typeof parsed.act === 'string' ? parsed.act : undefined,
     ts: typeof parsed.ts === 'number' ? parsed.ts : undefined,

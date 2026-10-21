@@ -18,7 +18,8 @@ export function boundedInt(value: unknown, min: number, max: number = MAX_BID): 
 export function boundedString(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
-  if (!trimmed || trimmed.length > max) return null
+  // Postgres text cannot hold a NUL; refuse it here rather than fail later.
+  if (!trimmed || trimmed.length > max || trimmed.includes('\u0000')) return null
   return trimmed
 }
 

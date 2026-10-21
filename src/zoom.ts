@@ -53,17 +53,31 @@ function configure(capabilities: Apis[]) {
 // be relied on, so the panel establishes identity itself on every open.
 // Best effort: without it the viewer is simply unverified.
 export async function establishIdentity(): Promise<'established' | 'unavailable'> {
+  let context: string
   try {
-    const { context } = await zoomSdk.getAppContext()
-    const res = await fetch('/api/identity', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ context }),
-    })
-    return res.ok ? 'established' : 'unavailable'
+    context = (await zoomSdk.getAppContext()).context
   } catch {
     return 'unavailable'
   }
+  // A few tries: in a big meeting everyone opens the panel at once and a
+  // limit or a network blip must not leave someone unverified for half an hour.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch('/api/identity', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ context }),
+      })
+      if (res.ok) return 'established'
+      // A refused token will not get better; only a limit or a server error is worth waiting out.
+      if (res.status !== 429 && res.status < 500) return 'unavailable'
+      const wait = Number(res.headers.get('retry-after'))
+      await new Promise((r) => setTimeout(r, Math.min(15_000, (Number.isFinite(wait) && wait > 0 ? wait : 2 ** attempt) * 1000 + Math.random() * 800)))
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+    }
+  }
+  return 'unavailable'
 }
 
 async function runZoomConfiguration(): Promise<ZoomDiagnostics> {
