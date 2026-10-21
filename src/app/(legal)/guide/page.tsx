@@ -37,6 +37,10 @@ export default function Guide() {
           time, so nobody wins by sniping.
         </li>
         <li>When the clock ends, the lot shows Sold with the winner, or Not sold if the reserve wasn’t met. Start the next one.</li>
+        <li>
+          Under How winners pay, type where winners should send money, such as “Venmo @yourname”, and click Save. Only the people who
+          win a lot see it, right after the lot sells. Gavel does not take the payment; you and the winner settle up yourselves.
+        </li>
         <li>Click Copy link under Bring people in so anyone can join from a browser, or Invite all to prompt everyone in the meeting.</li>
         <li>Under So far you see every lot and the total raised. Download CSV saves the results for collecting payment.</li>
       </ol>
@@ -58,6 +62,7 @@ export default function Guide() {
         </li>
         <li>A red banner and a sound tell you the moment you are outbid. The clock beeps when it runs low and ticks for the last five seconds.</li>
         <li>If there is a Buy Now price, Buy it now takes the lot at once; tap twice to confirm.</li>
+        <li>If you win, a green card shows what you owe and the host’s payment line, with a Copy button. Send the payment yourself, outside Gavel.</li>
         <li>Your own bid amount is shown only to you and the host. The speaker button at the top mutes the sounds.</li>
       </ol>
       <h3>Bidding from a browser</h3>

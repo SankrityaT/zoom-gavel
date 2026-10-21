@@ -29,6 +29,7 @@ export default function Terms() {
 
       <h2>Hosts</h2>
       <ul>
+        <li>The payment line you write is yours. Make it accurate and make sure it is really yours: winners will send money to it. Do not put in anything that is not a way to pay you, and never link to something harmful.</li>
         <li>You are responsible for what you sell and for following the laws and rules that apply to the sale, including any that apply to auctions, raffles or fundraising where you are.</li>
         <li>Describe lots honestly. Do not list anything unlawful, stolen or harmful.</li>
         <li>You decide the rules of each lot (starting bid, reserve, Buy Now, length). Once a round has started, the app follows them.</li>
@@ -36,6 +37,7 @@ export default function Terms() {
 
       <h2>Bidders</h2>
       <ul>
+        <li>Gavel shows you the host’s payment line but cannot check it. Make sure it is the person you expect before you send money, and be careful with unexpected links.</li>
         <li>Bid only if you mean to pay. A winning bid is a commitment to the host.</li>
         <li>A max bid tells the app to bid for you, up to the amount you set, in steps. It may place bids for you until the round ends or your max is passed.</li>
         <li>Do not use more than one name to push a price up, and do not use scripts or tools to place bids faster than a person could.</li>

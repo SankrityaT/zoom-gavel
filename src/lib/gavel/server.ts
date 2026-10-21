@@ -133,6 +133,37 @@ export async function purgeZoomUser(bidderKey: string) {
   )
 }
 
+export type PaymentWin = { roundNo: number; itemName: string; finalBid: number; boughtNow: boolean }
+
+// How winners pay. Set by the host; readable only by someone who has won.
+export async function setPaymentNote(uuid: string, hostKey: string | null, note: string | null) {
+  return rpc<{ ok: true; note: string | null } | { ok: false; reason: string }>('set_payment_note', {
+    p_uuid: uuid,
+    p_host_key: hostKey,
+    p_note: note,
+  })
+}
+
+export async function getPaymentNote(uuid: string) {
+  return rpc<string | null>('get_payment_note', { p_uuid: uuid })
+}
+
+export async function paymentForWinner(uuid: string, bidderKey: string | null) {
+  const raw = await rpc<{
+    wins: { round_no: number; item_name: string; final_bid: number; bought_now: boolean }[]
+    note: string | null
+  }>('payment_for_winner', { p_uuid: uuid, p_key: bidderKey })
+  return {
+    wins: raw.wins.map((w) => ({
+      roundNo: w.round_no,
+      itemName: w.item_name,
+      finalBid: w.final_bid,
+      boughtNow: w.bought_now,
+    })) satisfies PaymentWin[],
+    note: raw.note,
+  }
+}
+
 // Records a role change Zoom reported: on for a co-host (or a host who took
 // over), off when they go back to attendee.
 export async function setCohost(uuid: string, bidderKey: string, on: boolean, eventTs: number) {

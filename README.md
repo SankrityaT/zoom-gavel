@@ -25,6 +25,7 @@ For the host:
 - **Results and export.** Every finished round is saved. The host sees a
   running receipt and can download a CSV of winners and prices to collect
   payment.
+- **Tell winners how to pay.** The host types one line (a Venmo or Zelle handle, say) and only the people who win a lot see it, with a Copy button. Gavel never takes the money.
 - **Bring people in.** One button invites the whole meeting; a copyable link
   lets anyone bid from a browser.
 
@@ -96,8 +97,8 @@ Under the hood:
   credentials): see `docs/marketplace-submission.md`, which holds every field
   Zoom asks for, the reviewer's test plan and the technical design. The public
   pages Zoom requires are built: `/privacy`, `/terms`, `/support`, `/guide`.
-- Not built yet: payment inside the app (winners pay the host outside it) and
-  Marketplace submission itself. Co-hosts and the browser Zoom sign-in are
+- Not built yet: checkout inside the app (the host's payment line tells winners
+  where to send money; winners pay outside it) and Marketplace submission itself. Co-hosts and the browser Zoom sign-in are
   built and tested against signed notices and a fake Zoom, and still need a
   pass in a real meeting.
 
@@ -212,6 +213,16 @@ Removal. Zoom's `app_deauthorized` notice (same signed webhook) calls
 `purge_zoom_user` with the keyed hash of the Zoom id: max bids are deleted,
 names on bids and on won lots become "Removed bidder", a host claim is
 dropped. The record of each sale stays, naming nobody.
+
+How winners pay. A host-typed line of plain text (300 characters, control
+characters flattened) in `auction_payment`, set through `POST
+/api/session/[key]/payment` under the same host rule as the queue (a co-host
+acts with the host's key). It is on no public row and in no broadcast. A winner
+asks `action: 'mine'` with their identity (the verified cookie, or guest name
+plus secret) and gets back the lots they won in that session and the line, or
+nothing at all if they have won nothing, so the name alone never reveals it.
+Rendered as text, never as a link, because the panel runs inside Zoom where an
+arbitrary link would need allow-listing. Removing a host erases their line.
 
 Co-hosts. Zoom's app context carries no role, so the server cannot learn that
 someone is a co-host from their own session. Zoom's signed
@@ -334,7 +345,7 @@ Vercel Production), and `ZOOM_WEBHOOK_SECRET_TOKEN` (the app's event
 subscription Secret Token; the webhook answers 503 without it).
 
 Known gaps, tracked deliberately for later phases: payment is collected
-outside the app (no checkout), a co-host made so before the app was opened has
+outside the app (no checkout; winners are shown the host's payment line), a co-host made so before the app was opened has
 no controls until the role is given again (Zoom only sends a notice on a
 change), signing in with Zoom proves who someone is but not that they are in
 the meeting, and the app is not yet published on the Zoom Marketplace.

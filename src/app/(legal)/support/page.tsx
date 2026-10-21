@@ -55,6 +55,12 @@ export default function Support() {
         Apps. If it stays stuck, tell us the time and the meeting’s host.
       </p>
 
+      <h3>I won a lot but don’t see how to pay</h3>
+      <p>
+        The card appears right after your lot sells, and only if the host has filled in How winners pay. If it says the host will tell
+        you how to pay, ask the host directly. Gavel never takes the money, so there is no payment button.
+      </p>
+
       <h3>I don’t hear sounds</h3>
       <p>
         Sounds start after your first tap or click in the panel. Check the speaker button at the top right of the panel isn’t muted,

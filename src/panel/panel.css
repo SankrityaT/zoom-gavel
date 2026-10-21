@@ -1179,6 +1179,126 @@
   color: var(--ink-2);
 }
 
+/* ---- how winners pay ---- */
+.gv-pay-setup {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--paper-2);
+}
+
+.gv-pay-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.gv-pay-title span {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.gv-pay-row {
+  display: flex;
+  gap: 10px;
+}
+
+.gv-pay-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.gv-pay-row input:focus {
+  outline: 2px solid var(--blue);
+}
+
+.gv-pay-row .gv-pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.gv-message--calm {
+  margin: 10px 2px 0;
+  color: var(--ink-2);
+  text-align: left;
+}
+
+.gv-paycard {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: var(--green-wash);
+  color: var(--ink);
+}
+
+.gv-paycard-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.gv-paycard-title span {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.gv-paycard-wins {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+.gv-paycard-wins li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+
+.gv-paycard-label {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gv-paycard-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.gv-paycard-note span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.gv-paycard-fine {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
 /* ---- sign in with Zoom (browser only) ---- */
 .gv-signin {
   display: flex;

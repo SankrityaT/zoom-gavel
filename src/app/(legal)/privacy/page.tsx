@@ -60,6 +60,13 @@ export default function Privacy() {
           </tr>
           <tr>
             <td>
+              <strong>How winners should pay</strong>: one short line of text the host types, such as a Venmo or Zelle handle. It can
+              contain whatever the host chooses to put in it.
+            </td>
+            <td>So the winner of a lot knows where to send payment. Only people who have won something in that auction can read it.</td>
+          </tr>
+          <tr>
+            <td>
               <strong>If you sign in with Zoom in a browser</strong>: your Zoom user ID (kept only as the same keyed hash) and your
               Zoom display name.
             </td>
@@ -92,14 +99,16 @@ export default function Privacy() {
 
       <h2>Money</h2>
       <p>
-        The app never handles payment. It records who won and for how much; the host and the winner settle up themselves, outside the
-        app. We collect no card or bank details.
+        The app never handles payment. It records who won and for how much, and shows the winner the payment line the host wrote. The
+        host and the winner settle up themselves, outside the app. We collect no card or bank details, and we cannot check that a
+        payment line is genuine.
       </p>
 
       <h2>Who can see what</h2>
       <ul>
         <li>Everyone in an auction sees the lot, the current price, who is leading, and the ranking of bidders by name.</li>
         <li>An amount you bid is shown only to you and the host. Other bidders see your rank, not your number.</li>
+        <li>The host’s payment line is shown only to people who have won a lot in that auction, and to the host and co-hosts.</li>
         <li>The ceiling of a max bid is shown only to you. Nobody else, including the host, can see it. The bids it places for you appear like any other bid.</li>
         <li>
           The host can see every bidder’s amount and can download a results file (CSV) with each lot, the winner’s name and the final
@@ -141,11 +150,11 @@ export default function Privacy() {
       <h2>How long we keep it</h2>
       <ul>
         <li>Auctions started from a browser link or the demo page are deleted 24 hours after their last activity.</li>
-        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity.</li>
+        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity, along with the host’s payment line.</li>
         <li>The counters that hold IP addresses are deleted within 1 hour of expiring.</li>
         <li>
           When you remove the app from Zoom, Zoom notifies us and we erase you straight away: your max bids are deleted, and your name
-          is replaced by “Removed bidder” on your bids and on any lot you won. The record of the sale stays; your name does not.
+          is replaced by “Removed bidder” on your bids and on any lot you won, and a payment line you set as host is deleted. The record of the sale stays; your name does not.
         </li>
       </ul>
 

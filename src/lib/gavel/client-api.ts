@@ -145,6 +145,40 @@ async function queueRequest(sessionKey: string, body: unknown): Promise<QueueRes
   }
 }
 
+// How winners pay. The host sets the note; a winner reads what they owe.
+export type PaymentWin = { roundNo: number; itemName: string; finalBid: number; boughtNow: boolean }
+export type MyPayment = { wins: PaymentWin[]; note: string | null }
+
+export async function fetchPaymentNote(sessionKey: string): Promise<string | null | undefined> {
+  const res = await fetch(sessionUrl(sessionKey, '/payment'), { cache: 'no-store' })
+  if (res.status === 401 || res.status === 403 || res.status === 404) return undefined
+  if (!res.ok) throw new Error(`payment read failed (${res.status})`)
+  return ((await res.json()) as { note: string | null }).note
+}
+
+export async function savePaymentNote(
+  sessionKey: string,
+  note: string | null,
+): Promise<{ ok: true; note: string | null } | { ok: false; error: string }> {
+  const res = await postJson(sessionUrl(sessionKey, '/payment'), { action: 'set', note })
+  const json = (await res.json().catch(() => ({}))) as { note?: string | null; error?: string }
+  if (res.ok) return { ok: true, note: json.note ?? null }
+  if (res.status === 429) return { ok: false, error: 'Too many requests. Try again in a moment.' }
+  if (res.status === 401) return { ok: false, error: 'Zoom has not confirmed who you are. Close Gavel and open it again from Apps.' }
+  if (res.status === 403) return { ok: false, error: 'Only the meeting host can change this.' }
+  return { ok: false, error: 'Could not save that. Try again.' }
+}
+
+export async function fetchMyPayment(sessionKey: string, bidderName: string): Promise<MyPayment | null> {
+  const res = await postJson(sessionUrl(sessionKey, '/payment'), {
+    action: 'mine',
+    bidderId: bidderName,
+    bidderSecret: guestSecret(),
+  })
+  if (!res.ok) return null
+  return (await res.json()) as MyPayment
+}
+
 export const queueAdd = (sessionKey: string, lot: QueueLot) => queueRequest(sessionKey, { action: 'add', ...lot })
 export const queueRemove = (sessionKey: string, id: number) => queueRequest(sessionKey, { action: 'remove', id })
 export const queueStartNext = (sessionKey: string) => queueRequest(sessionKey, { action: 'start' })

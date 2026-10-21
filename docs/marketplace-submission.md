@@ -20,7 +20,7 @@ Done, by Aside, each saved and re-opened to confirm:
 - Listing: descriptions, icon, three gallery images, category Event Management, industry Other; Privacy, Terms, Support and Documentation links on the new domain; the privacy acknowledgment ticked.
 - EU: "Available in the EU" unticked, so no business, bank or ID details are required.
 - Technical Design: technology stack, architecture diagram, security answers and the two evidence PDFs.
-- Release notes for the reviewer (1,839 of 2,000 characters).
+- Release notes for the reviewer (1,839 of 2,000 characters). They do not yet mention the host's payment line (step: set "How winners pay", end a lot, the winner sees a green card); add a sentence if you want reviewers to see it.
 
 Server side:
 
@@ -160,5 +160,5 @@ signs only 6 hour cookies).
 - A browser bidder who has not signed in with Zoom is a **guest**: their identity is the name they type plus a private random secret kept in their browser. Nobody can bid or change a max bid as a guest they have only seen on the leaderboard, but a guest has no Zoom-backed identity, and clearing browser storage makes them a new guest. Signing in with Zoom gives a verified identity. Sign-in proves who someone is, not that they are in the meeting.
 - A co-host is whoever Zoom's `meeting.participant_role_changed` notice names while the app is subscribed; someone made co-host before opening the app, with no later change, has no controls until the role is given again. Built and tested against signed notices, not yet in a real meeting.
 - Two equal max bids: the one that was leading keeps it. A plain hand bid that lands exactly on a hidden max bid now loses to the max bid.
-- Payment happens outside the app, by design.
+- Payment happens outside the app, by design. The host can type one line saying where winners should send money; only winners see it. Gavel cannot verify that line, which the terms and the winner's card say.
 - The panel has not been run through a full in-meeting test since the Oct 5 week's features (queue, max bid, alerts) were added.

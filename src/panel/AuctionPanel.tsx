@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import {
+  fetchMyPayment,
+  fetchPaymentNote,
   fetchQueue,
   fetchResults,
+  savePaymentNote,
+  type MyPayment,
   queueAdd,
   queueRemove,
   queueStartNext,
@@ -43,6 +47,7 @@ const ROUND_LENGTHS = [
 ]
 // The last seconds of a round each get a tick.
 const TICK_FROM_SEC = 5
+const PAYMENT_NOTE_MAX = 300
 const QUEUE_READ_RETRIES = 3
 const AVATAR_TINTS = ['coral', 'sage', 'sand', 'sky', 'plum']
 
@@ -95,6 +100,7 @@ export default function AuctionPanel({ sessionKey, bidderName, inZoom, roleHint,
           auction={auction}
           roleHint={roleHint}
           sessionKey={sessionKey}
+          bidderName={bidderName}
           onInviteMeeting={onInviteMeeting}
         />
       )}
@@ -176,12 +182,14 @@ function LivePanel({
   auction,
   roleHint,
   sessionKey,
+  bidderName,
   onInviteMeeting,
 }: {
   state: SessionState
   auction: AuctionSessionHook
   roleHint: string | null
   sessionKey: string
+  bidderName: string
   onInviteMeeting?: () => Promise<void>
 }) {
   const { session, viewer } = state
@@ -207,6 +215,10 @@ function LivePanel({
       {isOpen && <BidDock key={session.roundNo} state={state} auction={auction} />}
       {isOpen && canHost && <EndRound auction={auction} upNext={session.upNext} />}
 
+      {session.status === 'closed' && (
+        <PayCard key={session.roundNo} state={state} auction={auction} sessionKey={sessionKey} bidderName={bidderName} />
+      )}
+
       {session.status === 'closed' && !canHost && (
         <p className="gv-after">
           {session.leader !== null && session.reserveMet ? 'The host will be in touch about payment. ' : ''}
@@ -223,6 +235,7 @@ function LivePanel({
       {!isOpen && canHost && (
         <>
           <HostDesk key={session.roundNo} state={state} auction={auction} sessionKey={sessionKey} />
+          <PaySetup sessionKey={sessionKey} />
           <Invite sessionKey={sessionKey} onInviteMeeting={onInviteMeeting} />
         </>
       )}
@@ -1139,6 +1152,171 @@ function HostSetup({
         </p>
       )}
     </form>
+  )
+}
+
+// Where winners should send payment, in the host's own words. Gavel never
+// takes money: this only tells the winner what the host asked for.
+function PaySetup({ sessionKey }: { sessionKey: string }) {
+  const [saved, setSaved] = useState<string | null | undefined>(undefined)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    let active = true
+    fetchPaymentNote(sessionKey)
+      .then((note) => {
+        if (!active || note === undefined) return
+        setSaved(note)
+        setDraft(note ?? '')
+      })
+      .catch(() => {
+        // Transient; the host can still type and save.
+      })
+    return () => {
+      active = false
+    }
+  }, [sessionKey])
+
+  async function save(next: string | null) {
+    if (busy) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const result = await savePaymentNote(sessionKey, next)
+      if (result.ok) {
+        setSaved(result.note)
+        setDraft(result.note ?? '')
+        setMessage(result.note ? 'Saved. Winners see this after a lot sells.' : 'Removed.')
+      } else {
+        setMessage(result.error)
+      }
+    } catch {
+      setMessage('Could not save that. Check your connection and try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const trimmed = draft.trim()
+  const changed = trimmed !== (saved ?? '')
+  return (
+    <form
+      className="gv-pay-setup"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (changed) void save(trimmed === '' ? null : trimmed)
+      }}
+    >
+      <p className="gv-pay-title">
+        How winners pay
+        <span>Only winners see this. Gavel never takes the money.</span>
+      </p>
+      <div className="gv-pay-row">
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          maxLength={PAYMENT_NOTE_MAX}
+          placeholder="For example: Venmo @yourname"
+          aria-label="How winners should pay you"
+        />
+        <button className="gv-pill" type="submit" disabled={busy || !changed}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+      {message && (
+        <p className="gv-message gv-message--calm" role="status">
+          {message}
+        </p>
+      )}
+    </form>
+  )
+}
+
+// What a winner owes and where to send it. Shown only to the person who won
+// the lot that just sold; nobody else is told anything.
+function PayCard({
+  state,
+  auction,
+  sessionKey,
+  bidderName,
+}: {
+  state: SessionState
+  auction: AuctionSessionHook
+  sessionKey: string
+  bidderName: string
+}) {
+  const { session } = state
+  const sold = session.leader !== null && session.reserveMet
+  const youWon = sold && auction.selfKey !== null && session.leader?.bidderKey === auction.selfKey
+  const [mine, setMine] = useState<MyPayment | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!youWon) return
+    let active = true
+    fetchMyPayment(sessionKey, bidderName)
+      .then((next) => {
+        if (active) setMine(next)
+      })
+      .catch(() => {
+        // Transient; the card simply stays out of the way.
+      })
+    return () => {
+      active = false
+    }
+  }, [youWon, sessionKey, bidderName, session.roundNo])
+
+  if (!youWon || !mine || mine.wins.length === 0) return null
+  const owed = mine.wins.reduce((sum, win) => sum + win.finalBid, 0)
+
+  async function copy() {
+    if (!mine?.note) return
+    try {
+      await navigator.clipboard.writeText(mine.note)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // The Zoom client blocks the clipboard: the text is selectable by hand.
+    }
+  }
+
+  return (
+    <div className="gv-paycard">
+      <p className="gv-paycard-title">
+        {mine.wins.length === 1 ? 'You won it' : `You have won ${mine.wins.length} lots`}
+        <span>
+          {mine.wins.length === 1
+            ? `${mine.wins[0].itemName} for ${formatUsd(mine.wins[0].finalBid)}`
+            : `${formatUsd(owed)} in all`}
+        </span>
+      </p>
+      {mine.wins.length > 1 && (
+        <ul className="gv-paycard-wins">
+          {mine.wins.map((win) => (
+            <li key={win.roundNo}>
+              <span>{win.itemName}</span>
+              <span>{formatUsd(win.finalBid)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {mine.note ? (
+        <>
+          <p className="gv-paycard-label">Pay the host here</p>
+          <div className="gv-paycard-note">
+            <span>{mine.note}</span>
+            <button className="gv-pill" type="button" onClick={() => void copy()}>
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <p className="gv-paycard-fine">Gavel does not take payment. Check it is the person you expect before you send anything.</p>
+        </>
+      ) : (
+        <p className="gv-paycard-fine">The host will tell you how to pay.</p>
+      )}
+    </div>
   )
 }
 

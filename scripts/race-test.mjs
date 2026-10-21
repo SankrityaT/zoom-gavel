@@ -69,6 +69,7 @@ const get = (k, cookie) => api(encodeURIComponent(k), { cookie })
 const init = (k) => api(encodeURIComponent(k), { method: 'POST', body: { init: true, itemName: 'Race lot', openingBid: 100 } })
 const bid = (k, amount, name, cookie) =>
   api(encodeURIComponent(k), { method: 'POST', body: { amount, bidderId: name }, cookie })
+const post_bid = (k, amount, who, secret) => api(encodeURIComponent(k), { method: 'POST', body: { amount, bidderId: who, bidderSecret: secret } })
 const start = (k, opts = {}, cookie) =>
   api(`${encodeURIComponent(k)}/round`, {
     method: 'POST',
@@ -452,6 +453,54 @@ await scenario('S27', 'a guest cannot be impersonated by name', async () => {
   check('S27j a client with no secret still works (as its own separate bidder)', legacy.status === 200 && entries((await get(k)).json).length === 3)
 })
 
+await scenario('S28', 'how winners pay', async () => {
+  const k = key()
+  await init(k)
+  await start(k, { seconds: 30, reservePrice: 120 })
+  const pay = (body, cookie) => api(`${encodeURIComponent(k)}/payment`, { method: 'POST', body, cookie })
+  const mine = (who, secret) => pay({ action: 'mine', bidderId: who, bidderSecret: secret })
+  const secretA = randomBytes(12).toString('base64url')
+  const secretB = randomBytes(12).toString('base64url')
+  const NOTE = 'Venmo @sam-the-host'
+
+  const saved = await pay({ action: 'set', note: NOTE })
+  check('S28a the host sets how winners pay', saved.status === 200 && saved.json.note === NOTE, JSON.stringify(saved.json))
+  const peek = await api(`${encodeURIComponent(k)}/payment`)
+  check('S28b the host can read it back', peek.status === 200 && peek.json.note === NOTE, JSON.stringify(peek.json))
+
+  const w = await post_bid(k, 150, 'Ana', secretA)
+  check('S28c0 the first guest bids', w.status === 200, String(w.status))
+  const l = await post_bid(k, 175, 'Ben', secretB)
+  check('S28c two guests bid', l.status === 200, String(l.status))
+  // While the round is open nobody has won anything.
+  check('S28d nobody sees the note during the round', (await mine('Ben', secretB)).json.note === null && (await mine('Ben', secretB)).json.wins.length === 0)
+  await stop(k)
+  const ben = await mine('Ben', secretB)
+  check('S28e the winner sees what they owe', ben.status === 200 && ben.json.wins.length === 1 && ben.json.wins[0].finalBid === 175 && ben.json.wins[0].itemName === 'Race lot', JSON.stringify(ben.json))
+  check('S28f and where to send it', ben.json.note === NOTE)
+  const ana = await mine('Ana', secretA)
+  check('S28g the loser sees nothing: no wins, no note', ana.status === 200 && ana.json.wins.length === 0 && ana.json.note === null, JSON.stringify(ana.json))
+  const copycat = await mine('Ben', randomBytes(12).toString('base64url'))
+  check('S28h someone using the winner\'s name with another secret sees nothing', copycat.json.wins.length === 0 && copycat.json.note === null, JSON.stringify(copycat.json))
+  const bare = await mine('Ben', undefined)
+  check('S28i nor does the bare name', bare.json.wins.length === 0 && bare.json.note === null)
+  const stranger = await mine('Zed', randomBytes(12).toString('base64url'))
+  check('S28j a stranger sees nothing', stranger.json.wins.length === 0 && stranger.json.note === null)
+  check('S28k the note is not on the public session or leaderboard', !JSON.stringify((await get(k)).json).includes('Venmo'))
+
+  const bad = await pay({ action: 'set', note: 'x'.repeat(301) })
+  check('S28l a note over 300 characters is a 400', bad.status === 400, String(bad.status))
+  const tidy = await pay({ action: 'set', note: 'Zelle:\n\tsam@example.com\u0007' })
+  check('S28m control characters and newlines are flattened to spaces', tidy.status === 200 && !/[\u0000-\u001f]/.test(tidy.json.note) && tidy.json.note.includes('sam@example.com'), JSON.stringify(tidy.json))
+  const cleared = await pay({ action: 'set', note: null })
+  check('S28n the host clears it', cleared.status === 200 && cleared.json.note === null)
+  check('S28o a winner then sees the lot but no payment details', (await mine('Ben', secretB)).json.wins.length === 1 && (await mine('Ben', secretB)).json.note === null)
+  check('S28p an unknown action is a 400', (await pay({ action: 'nope' })).status === 400)
+  check('S28q a malformed guest secret is a 400', (await pay({ action: 'mine', bidderId: 'Ben', bidderSecret: 'short' })).status === 400)
+  const cross = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(k)}/payment`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify({ action: 'set', note: 'Send it to me' }) })
+  check('S28r another site cannot set it (403)', cross.status === 403, String(cross.status))
+})
+
 if (WEBHOOK_TOKEN && SESSION_SECRET) {
   const signed = (bodyObj, { token = WEBHOOK_TOKEN, ts = Math.floor(Date.now() / 1000) } = {}) => {
     const body = JSON.stringify(bodyObj)
@@ -581,7 +630,12 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const hostView = await get(k, host)
     check('S25p the host is still the host after a co-host starts a round', hostView.json.viewer.isHost === true && hostView.json.viewer.isCohost === false && hostView.json.session.hostVerified === true, JSON.stringify(hostView.json.viewer))
     check('S25q the host can still stop it', (await stop(k, host)).status === 200)
+    const payAs = (cookie, note) => api(`${encodeURIComponent(k)}/payment`, { method: 'POST', cookie, body: { action: 'set', note } })
+    check('S25q2 the host sets how winners pay', (await payAs(host, 'Venmo @host')).status === 200)
+    check('S25q3 an attendee cannot change it (403)', (await payAs(attendee, 'Send it to me')).status === 403)
+    check('S25q4 and cannot read it', (await api(`${encodeURIComponent(k)}/payment`, { cookie: attendee })).status === 403)
 
+    check('S25r0 a co-host can change how winners pay', (await payAs(cohost, 'Venmo @cohost-edit')).status === 200 && (await api(`${encodeURIComponent(k)}/payment`, { cookie: host })).json.note === 'Venmo @cohost-edit')
     const demoted = await role('userCohostC', 'attendee', 'co-host')
     check('S25r Zoom demotes the co-host', demoted.status === 200)
     const after = await start(k, {}, cohost)

@@ -15,6 +15,7 @@ export const LIMITS = {
   queuePerIp: { limit: 90, windowSeconds: 60 },
   identityPerIp: { limit: 60, windowSeconds: 60 },
   oauthPerIp: { limit: 120, windowSeconds: 60 },
+  paymentPerIp: { limit: 60, windowSeconds: 60 },
   webhookPerIp: { limit: 120, windowSeconds: 60 },
 } as const
 
