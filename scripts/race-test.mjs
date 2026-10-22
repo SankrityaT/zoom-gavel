@@ -70,13 +70,26 @@ const init = (k) => api(encodeURIComponent(k), { method: 'POST', body: { init: t
 const bid = (k, amount, name, cookie) =>
   api(encodeURIComponent(k), { method: 'POST', body: { amount, bidderId: name }, cookie })
 const post_bid = (k, amount, who, secret) => api(encodeURIComponent(k), { method: 'POST', body: { amount, bidderId: who, bidderSecret: secret } })
+// The suite starts and stops lots far faster than any host would, so against a
+// real deployment it can meet the per-IP limit on round actions. That is the
+// limit working, not a failure: wait it out and ask again.
+async function patient(call) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await call()
+    if (res.status !== 429 || res.json?.reason !== 'rate_limited') return res
+    await sleep(Math.min(65, Number(res.json?.retryAfter ?? 5) + 1) * 1000)
+  }
+  return call()
+}
 const start = (k, opts = {}, cookie) =>
-  api(`${encodeURIComponent(k)}/round`, {
-    method: 'POST',
-    cookie,
-    body: { action: 'start', itemName: 'Race lot', openingBid: 100, reservePrice: null, seconds: 30, extendWindowSeconds: 10, extendBySeconds: 15, ...opts },
-  })
-const stop = (k, cookie) => api(`${encodeURIComponent(k)}/round`, { method: 'POST', body: { action: 'stop' }, cookie })
+  patient(() =>
+    api(`${encodeURIComponent(k)}/round`, {
+      method: 'POST',
+      cookie,
+      body: { action: 'start', itemName: 'Race lot', openingBid: 100, reservePrice: null, seconds: 30, extendWindowSeconds: 10, extendBySeconds: 15, ...opts },
+    }),
+  )
+const stop = (k, cookie) => patient(() => api(`${encodeURIComponent(k)}/round`, { method: 'POST', body: { action: 'stop' }, cookie }))
 
 // Bid amounts are private, so scenarios read the public leaderboard: one
 // entry per bidder with a bid count and last-bid time, amounts withheld.
@@ -879,7 +892,7 @@ if (SESSION_SECRET) {
 
 const setMax = (k, amount, name, cookie) =>
   api(`${encodeURIComponent(k)}/max`, { method: 'POST', body: { amount, bidderId: name }, cookie })
-const queue = (k, body, cookie) => api(`${encodeURIComponent(k)}/queue`, { method: 'POST', body, cookie })
+const queue = (k, body, cookie) => patient(() => api(`${encodeURIComponent(k)}/queue`, { method: 'POST', body, cookie }))
 const leaderOf = (state) => state.session.leader?.name ?? null
 
 await scenario('S20', 'max bids', async () => {
