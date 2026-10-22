@@ -1,5 +1,5 @@
 import { guestSecret } from './guest'
-import type { BidReason, QueueItem, RoundReason, RoundResult as RoundRecord, SessionState } from './types'
+import type { Analytics, BidReason, QueueItem, RoundReason, RoundResult as RoundRecord, SessionState } from './types'
 
 // The one place the browser talks to /api/session/[key]. Cookies ride along
 // automatically on same-origin fetches, which is how verified identity
@@ -88,6 +88,14 @@ export function stopRound(sessionKey: string) {
 
 export function resultsUrl(sessionKey: string, format?: 'csv') {
   return sessionUrl(sessionKey, format ? '/results?format=csv' : '/results')
+}
+
+// The night in numbers; null when this viewer may not see them (not the host).
+export async function fetchAnalytics(sessionKey: string): Promise<Analytics | null> {
+  const res = await fetch(sessionUrl(sessionKey, '/analytics'), { cache: 'no-store' })
+  if (res.status === 401 || res.status === 403 || res.status === 404) return null
+  if (!res.ok) throw new Error(`analytics read failed (${res.status})`)
+  return (await res.json()) as Analytics
 }
 
 // Finished rounds; null when this viewer may not see them (not the host).

@@ -543,6 +543,46 @@ await scenario('S29', 'a max bid that reaches the reserve makes the lot sell', a
   check('S29h a NUL character in a name is a 400', nul.status === 400, String(nul.status))
 })
 
+await scenario('S30', 'host analytics', async () => {
+  const k = key()
+  await init(k)
+  const stats = () => api(`${encodeURIComponent(k)}/analytics`)
+  const empty = await stats()
+  check('S30a before any lot finishes there is nothing to count', empty.status === 200 && empty.json.rounds === 0 && empty.json.raised === 0, JSON.stringify(empty.json))
+
+  // Lot 1: Ana and Ben, Ana wins. Lot 2: Ben alone, wins. Lot 3: reserve not met, Cy bids.
+  await start(k, { seconds: 30, openingBid: 100 })
+  await bid(k, 110, 'Ana'); await bid(k, 130, 'Ben'); await bid(k, 150, 'Ana')
+  await stop(k)
+  await start(k, { seconds: 30, openingBid: 100 })
+  await bid(k, 100, 'Ben')
+  await stop(k)
+  await start(k, { seconds: 30, openingBid: 100, reservePrice: 500 })
+  await bid(k, 120, 'Cy')
+  await stop(k)
+  const a = (await stats()).json
+  check('S30b three lots finished, two sold', a.rounds === 3 && a.sold === 2, JSON.stringify([a.rounds, a.sold]))
+  check('S30c raised is what the sold lots made (150 + 100)', a.raised === 250, String(a.raised))
+  check('S30d the starting bids of the sold lots add to 200, so the uplift is real', a.openingTotal === 200, String(a.openingTotal))
+  check('S30e five bids, none automatic', a.bids === 5 && a.autoBids === 0, JSON.stringify([a.bids, a.autoBids]))
+  check('S30f three different bidders, one of them (Ben) on more than one lot', a.uniqueBidders === 3 && a.repeatBidders === 1, JSON.stringify([a.uniqueBidders, a.repeatBidders]))
+  check('S30g on average 1.3 people per lot (2, 1 and 1)', Number(a.biddersPerRound) === 1.3, String(a.biddersPerRound))
+  check('S30h every lot has its start time recorded', a.timedRounds === 3, String(a.timedRounds))
+  const sum = (xs) => xs.reduce((n, x) => n + x, 0)
+  check('S30i every bid is placed in some fifth of its lot', a.bidsByFifth.length === 5 && sum(a.bidsByFifth) === 5, JSON.stringify(a.bidsByFifth))
+  check('S30j the people who did not win are Ben (lot 1) and Cy (lot 3)', a.dropOffByFifth.length === 5 && sum(a.dropOffByFifth) === 2, JSON.stringify(a.dropOffByFifth))
+  const body = JSON.stringify(a)
+  check('S30k the numbers name no one', !/Ana|Ben|Cy|bidder_key|bidderKey/.test(body))
+
+  // A max bid counts as automatic.
+  const k2 = key(); await init(k2); await start(k2, { seconds: 30, openingBid: 100 })
+  await api(`${encodeURIComponent(k2)}/max`, { method: 'POST', body: { amount: 400, bidderId: 'Max', bidderSecret: 'analyticssecret012345' } })
+  await api(encodeURIComponent(k2), { method: 'POST', body: { amount: 150, bidderId: 'Other', bidderSecret: 'analyticssecret999999' } })
+  await stop(k2)
+  const m = (await api(`${encodeURIComponent(k2)}/analytics`)).json
+  check('S30l bids placed by a max bid are counted as such', m.autoBids >= 1 && m.bids >= 3, JSON.stringify([m.bids, m.autoBids]))
+})
+
 if (WEBHOOK_TOKEN && SESSION_SECRET) {
   const signed = (bodyObj, { token = WEBHOOK_TOKEN, ts = Math.floor(Date.now() / 1000) } = {}) => {
     const body = JSON.stringify(bodyObj)
@@ -686,6 +726,11 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const hostView = await get(k, host)
     check('S25p the host is still the host after a co-host starts a round', hostView.json.viewer.isHost === true && hostView.json.viewer.isCohost === false && hostView.json.session.hostVerified === true, JSON.stringify(hostView.json.viewer))
     check('S25q the host can still stop it', (await stop(k, host)).status === 200)
+    const statsAs = (cookie) => api(`${encodeURIComponent(k)}/analytics`, { cookie })
+    check('S25p2 an attendee cannot read the host\'s numbers (403)', (await statsAs(attendee)).status === 403)
+    check('S25p3 nor a visitor with no identity (401)', (await api(`${encodeURIComponent(k)}/analytics`)).status === 401)
+    check('S25p4 the host can', (await statsAs(host)).status === 200)
+    check('S25p5 and so can the co-host', (await statsAs(cohost)).status === 200)
     const payAs = (cookie, note) => api(`${encodeURIComponent(k)}/payment`, { method: 'POST', cookie, body: { action: 'set', note } })
     check('S25q2 the host sets how winners pay', (await payAs(host, 'Venmo @host')).status === 200)
     check('S25q3 an attendee cannot change it (403)', (await payAs(attendee, 'Send it to me')).status === 403)

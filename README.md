@@ -233,6 +233,17 @@ nothing at all if they have won nothing, so the name alone never reveals it.
 Rendered as text, never as a link, because the panel runs inside Zoom where an
 arbitrary link would need allow-listing. Removing a host erases their line.
 
+Host analytics. The plan's "what did the night do" numbers, for the host (or a
+co-host) only, at `GET /api/session/[key]/analytics`: total raised, lots sold,
+how many different people bid, who bid on more than one lot, bids placed by max
+bids, the uplift over starting bids, and, for placing a bid inside a lot, the
+bids and the last bids of people who did not win by fifth of the lot's running
+time. The only new fact kept is when each lot started (`auction_round_starts`,
+filled by a trigger on the session's round number, so no start function
+changed). A lot that missed its reserve has no winner, even though the round
+row records its top bidder. Counts only: no names and no per-person amounts.
+The panel shows it as "The night in numbers" under the receipt.
+
 Co-hosts. Zoom's app context carries no role, so the server cannot learn that
 someone is a co-host from their own session. Zoom's signed
 `meeting.participant_role_changed` notice (same webhook, same signature check)

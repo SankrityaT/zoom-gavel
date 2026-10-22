@@ -42,7 +42,8 @@ export default function Guide() {
           win a lot see it, right after the lot sells. Gavel does not take the payment; you and the winner settle up yourselves.
         </li>
         <li>Click Copy link under Bring people in so anyone can join from a browser, or Invite all to prompt everyone in the meeting.</li>
-        <li>Under So far you see every lot and the total raised. Download CSV saves the results for collecting payment.</li>
+        <li>Under So far you see every lot and the total raised. Download CSV saves the results for collecting payment (or Copy as text, if downloads are blocked).
+          Below it, The night in numbers shows what was raised, how many different people bid, and where in a lot bids come in and people drop out.</li>
       </ol>
 
       <h2>Co-hosts</h2>

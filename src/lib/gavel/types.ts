@@ -156,6 +156,25 @@ export type SessionState = {
   viewer: ViewerInfo
 }
 
+// The host's numbers for the night, from finished lots only. Counts, never names.
+export type Analytics = {
+  rounds: number
+  sold: number
+  raised: number
+  openingTotal: number
+  bids: number
+  autoBids: number
+  uniqueBidders: number
+  repeatBidders: number
+  biddersPerRound: number
+  /** Lots whose start time was recorded, so their bids can be placed in the round. */
+  timedRounds: number
+  /** Bids that fell in each fifth of a lot's running time, first to last. */
+  bidsByFifth: number[]
+  /** Bidders who did not win, by the fifth of the lot their last bid came in. */
+  dropOffByFifth: number[]
+}
+
 export type BidReason =
   | 'not_found'
   | 'not_open'

@@ -11,6 +11,7 @@ import {
   type RoundRow,
   type SessionRow,
   type SessionState,
+  type Analytics,
 } from './types'
 
 // Service-role client, server only. Lazy so `next build` succeeds before
@@ -226,6 +227,10 @@ export function buildState(raw: NonNullable<RawState>, viewer: Viewer): SessionS
 export async function getState(uuid: string, viewer: Viewer) {
   const raw = await getRawState(uuid, viewer.verified ? viewer.bidderKey : null)
   return raw ? buildState(raw, viewer) : null
+}
+
+export async function getAnalytics(uuid: string) {
+  return rpc<Analytics>('session_analytics', { p_uuid: uuid })
 }
 
 // Finished rounds for a session, oldest first.

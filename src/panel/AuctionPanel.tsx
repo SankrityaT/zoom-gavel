@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import {
+  fetchAnalytics,
   fetchMyPayment,
   fetchPaymentNote,
   fetchQueue,
@@ -17,7 +18,7 @@ import {
 } from '@/lib/gavel/client-api'
 import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
 import { outcomeLabel } from '@/lib/gavel/results'
-import type { LeaderEntry, QueueItem, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
+import type { Analytics, LeaderEntry, QueueItem, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
 import logo from '@/marketing/assets/logo.png'
 import { playCue, setCuesDefaultMuted, useCues, useMuted, type Alert } from './cues'
 import { SUPPORT_EMAIL } from '@/legal/contact'
@@ -250,6 +251,7 @@ function LivePanel({
         </>
       )}
       {canHost && <Receipt state={state} sessionKey={sessionKey} />}
+      {canHost && <Insights state={state} sessionKey={sessionKey} />}
       <p className="gv-report">
         Something wrong with this auction? Tell us at <a href={`mailto:${SUPPORT_EMAIL}?subject=Gavel%20report`}>{SUPPORT_EMAIL}</a>
       </p>
@@ -1465,6 +1467,144 @@ function Invite({ sessionKey, onInviteMeeting }: { sessionKey: string; onInviteM
         <p className="gv-message" role="status">
           {inviting}
         </p>
+      )}
+    </div>
+  )
+}
+
+const FIFTHS = ['first fifth', 'second fifth', 'middle fifth', 'fourth fifth', 'last fifth']
+
+// The one fifth with the most, or null when nothing stands out (no data, or a tie).
+function busiest(counts: number[]) {
+  const total = counts.reduce((sum, n) => sum + n, 0)
+  if (total === 0) return null
+  const peak = Math.max(...counts)
+  return counts.filter((n) => n === peak).length === 1 ? counts.indexOf(peak) : null
+}
+
+// A row of five bars, one per fifth of a lot's running time.
+function Fifths({ counts, label }: { counts: number[]; label: string }) {
+  const peak = Math.max(1, ...counts)
+  return (
+    <div className="gv-fifths" role="img" aria-label={`${label}: ${counts.map((n, i) => `${FIFTHS[i]} ${n}`).join(', ')}`}>
+      {counts.map((n, i) => (
+        <div key={i} className="gv-fifth">
+          <span className="gv-fifth-n">{n}</span>
+          <i style={{ height: `${Math.max(4, Math.round((n / peak) * 56))}px` }} />
+        </div>
+      ))}
+      <p className="gv-fifths-axis" aria-hidden="true">
+        <span>Start of the lot</span>
+        <span>Close</span>
+      </p>
+    </div>
+  )
+}
+
+// The host's numbers for the night, from finished lots: what was raised, how
+// many different people bid, and where in a lot bidders drop out. Counts only.
+function Insights({ state, sessionKey }: { state: SessionState; sessionKey: string }) {
+  const { session } = state
+  const [data, setData] = useState<Analytics | null>(null)
+
+  useEffect(() => {
+    let active = true
+    fetchAnalytics(sessionKey)
+      .then((next) => {
+        if (active) setData(next)
+      })
+      .catch(() => {
+        // Transient; the next round change asks again.
+      })
+    return () => {
+      active = false
+    }
+  }, [sessionKey, session.status, session.roundNo])
+
+  if (!data || data.rounds === 0) return null
+  const uplift = data.openingTotal > 0 ? Math.round(((data.raised - data.openingTotal) / data.openingTotal) * 100) : 0
+  const mostBids = busiest(data.bidsByFifth)
+  const dropTotal = data.dropOffByFifth.reduce((sum, n) => sum + n, 0)
+  const mostDrops = busiest(data.dropOffByFifth)
+
+  return (
+    <div className="gv-insights">
+      <div className="gv-sect">
+        <h3>The night in numbers</h3>
+        <span>
+          {data.rounds} {data.rounds === 1 ? 'lot' : 'lots'} finished
+        </span>
+      </div>
+      <div className="gv-tiles-row">
+        <p>
+          <b>{formatUsd(data.raised)}</b>
+          <span>raised</span>
+        </p>
+        <p>
+          <b>
+            {data.sold} of {data.rounds}
+          </b>
+          <span>sold</span>
+        </p>
+        <p>
+          <b>{data.uniqueBidders}</b>
+          <span>{data.uniqueBidders === 1 ? 'bidder' : 'bidders'}</span>
+        </p>
+        <p>
+          <b>{data.bids}</b>
+          <span>bids</span>
+        </p>
+      </div>
+      <ul className="gv-insights-lines">
+        {data.biddersPerRound > 0 && (
+          <li>
+            On average {data.biddersPerRound} {data.biddersPerRound === 1 ? 'person' : 'people'} bid on each lot.
+          </li>
+        )}
+        {data.repeatBidders > 0 && (
+          <li>
+            {data.repeatBidders} {data.repeatBidders === 1 ? 'person bid' : 'people bid'} on more than one lot.
+          </li>
+        )}
+        {data.autoBids > 0 && (
+          <li>
+            {data.autoBids} {data.autoBids === 1 ? 'bid was' : 'bids were'} placed by max bids.
+          </li>
+        )}
+        {uplift > 0 && <li>Lots that sold went for {uplift}% above their starting bids.</li>}
+      </ul>
+
+      {data.timedRounds > 0 ? (
+        <>
+          <h4>When bids come in</h4>
+          <Fifths counts={data.bidsByFifth} label="Bids by fifth of the lot" />
+          <p className="gv-insights-note">
+            {mostBids !== null
+              ? `Most bids came in the ${FIFTHS[mostBids]} of a lot.`
+              : 'No part of a lot stands out yet: bids came in at different points.'}
+          </p>
+
+          <h4>When people dropped out</h4>
+          {dropTotal > 0 ? (
+            <>
+              <Fifths counts={data.dropOffByFifth} label="Last bid of people who did not win, by fifth of the lot" />
+              <p className="gv-insights-note">
+                {mostDrops !== null
+                  ? `Most people who did not win made their last bid in the ${FIFTHS[mostDrops]} of the lot.`
+                  : 'No single point stands out yet: people dropped out at different times.'}
+              </p>
+            </>
+          ) : (
+            <p className="gv-insights-note">Nobody dropped out yet: everyone who bid won their lot.</p>
+          )}
+          {data.timedRounds < data.rounds && (
+            <p className="gv-insights-note">
+              Timing covers {data.timedRounds} of {data.rounds} lots; earlier ones were started before it was recorded.
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="gv-insights-note">Timing appears once a lot has finished.</p>
       )}
     </div>
   )
