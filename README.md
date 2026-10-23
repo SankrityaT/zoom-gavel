@@ -231,8 +231,21 @@ acts with the host's key). It is on no public row and in no broadcast. A winner
 asks `action: 'mine'` with their identity (the verified cookie, or guest name
 plus secret) and gets back the lots they won in that session and the line, or
 nothing at all if they have won nothing, so the name alone never reveals it.
-Rendered as text, never as a link, because the panel runs inside Zoom where an
-arbitrary link would need allow-listing. Removing a host erases their line.
+Inside the Zoom panel it is text, never a link, because an arbitrary link would
+need allow-listing. Removing a host erases their line.
+
+Winner pages and paid ticks. A winner who asks `action: 'mine'` also gets
+`pageToken`, a random 192-bit token made on their first ask and kept in
+`auction_win_links` (one per session and winner, deleted with the session or
+when the person removes the app). `/p/[token]` is a server-rendered page, no
+sign-in, `noindex`, `no-referrer`, never cached, rate limited per address. It
+shows only that winner's lots, whether each is paid, and the host's line. When
+the line holds an https link to Venmo, PayPal, Cash App or Stripe
+(`src/lib/gavel/paylink.ts`, an exact host allow-list) the page and the browser
+panel offer a button naming it; anything else stays text. The host (or a
+co-host) ticks sold lots at `POST /api/session/[key]/paid`, stored as
+`auction_rounds.paid_at`; the receipt shows the ticks and how much is still to
+collect, and the CSV has a Paid column.
 
 Host analytics. The plan's "what did the night do" numbers, for the host (or a
 co-host) only, at `GET /api/session/[key]/analytics`: total raised, lots sold,

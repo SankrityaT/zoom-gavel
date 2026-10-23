@@ -78,6 +78,7 @@ export type RoundRow = {
   outcome: 'sold' | 'reserve_not_met' | 'no_bids'
   bought_now: boolean
   closed_at: string
+  paid_at: string | null
 }
 
 // Client-facing shapes (camelCase). host_key never leaves the server raw;
@@ -133,6 +134,8 @@ export type RoundResult = {
   outcome: 'sold' | 'reserve_not_met' | 'no_bids'
   boughtNow: boolean
   closedAt: string
+  /** The host has marked this sold lot as paid. */
+  paid: boolean
 }
 
 export type ViewerInfo = {
@@ -271,5 +274,6 @@ export function toRoundResult(row: RoundRow): RoundResult {
     outcome: row.outcome,
     boughtNow: row.bought_now,
     closedAt: row.closed_at,
+    paid: row.paid_at !== null,
   }
 }

@@ -5,6 +5,7 @@ import Image from 'next/image'
 import {
   fetchAnalytics,
   fetchMyPayment,
+  markPaid,
   fetchPaymentNote,
   fetchQueue,
   fetchResults,
@@ -17,6 +18,7 @@ import {
   type QueueLot,
 } from '@/lib/gavel/client-api'
 import { BID_STEP, MAX_BID, formatUsd } from '@/lib/gavel/demo'
+import { payLinkFrom } from '@/lib/gavel/paylink'
 import { outcomeLabel } from '@/lib/gavel/results'
 import type { Analytics, LeaderEntry, QueueItem, RoundResult as RoundRecord, SessionState } from '@/lib/gavel/types'
 import logo from '@/marketing/assets/logo.png'
@@ -1329,8 +1331,10 @@ function PayCard({
   const sold = session.status === 'closed' && session.leader !== null && session.reserveMet
   const youWon = sold && auction.selfKey !== null && session.leader?.bidderKey === auction.selfKey
   const [mine, setMine] = useState<MyPayment | null>(null)
-  const [copied, setCopied] = useState<'yes' | 'no' | null>(null)
+  const [copied, setCopied] = useState<'yes' | 'no' | 'link' | 'linkno' | null>(null)
   const needsNote = mine !== null && mine.wins.length > 0 && !mine.note
+  // Until the host has ticked everything off, keep the card current.
+  const awaitingPaid = mine !== null && mine.wins.some((win) => !win.paid)
 
   // Ask on opening the panel (a winner who reloads still sees what they owe),
   // each time they win another lot, and, while the host has not yet said how to
@@ -1348,8 +1352,10 @@ function PayCard({
   }, [load, youWon, session.roundNo])
 
   useEffect(() => {
-    if (!needsNote) return
-    const id = setInterval(() => void load(), 15_000)
+    if (!needsNote && !awaitingPaid) return
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') void load()
+    }, needsNote ? 15_000 : 30_000)
     const onVisible = () => {
       if (document.visibilityState === 'visible') void load()
     }
@@ -1358,10 +1364,24 @@ function PayCard({
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [needsNote, load])
+  }, [needsNote, awaitingPaid, load])
 
   if (!mine || mine.wins.length === 0) return null
   const owed = mine.wins.reduce((sum, win) => sum + win.finalBid, 0)
+  const allPaid = mine.wins.every((win) => win.paid)
+
+  // Inside Zoom a link to another site may not open, so the winner copies
+  // their private page address and opens it in a browser.
+  const inZoom = /ZoomApps/i.test(navigator.userAgent)
+  const payLink = inZoom ? null : payLinkFrom(mine.note)
+  const pageUrl = mine.pageToken ? `${window.location.origin}/p/${mine.pageToken}` : null
+
+  async function copyPage() {
+    if (!pageUrl) return
+    const ok = await copyText(pageUrl)
+    setCopied(ok ? 'link' : 'linkno')
+    if (ok) setTimeout(() => setCopied(null), 2000)
+  }
 
   async function copy() {
     if (!mine?.note) return
@@ -1384,13 +1404,18 @@ function PayCard({
         <ul className="gv-paycard-wins">
           {mine.wins.map((win) => (
             <li key={win.roundNo}>
-              <span>{win.itemName}</span>
+              <span>
+                {win.itemName}
+                {win.paid ? ' (paid)' : ''}
+              </span>
               <span>{formatUsd(win.finalBid)}</span>
             </li>
           ))}
         </ul>
       )}
-      {mine.note ? (
+      {allPaid ? (
+        <p className="gv-paycard-label">The host has marked this as paid.</p>
+      ) : mine.note ? (
         <>
           <p className="gv-paycard-label">Pay the host here</p>
           <div className="gv-paycard-note">
@@ -1400,10 +1425,28 @@ function PayCard({
             </button>
           </div>
           {copied === 'no' && <p className="gv-paycard-fine">Copying is blocked here. Select the text above to copy it.</p>}
+          {payLink && (
+            <a className="gv-paycard-go" href={payLink.url} target="_blank" rel="noopener noreferrer nofollow">
+              Pay with {payLink.service}
+            </a>
+          )}
           <p className="gv-paycard-fine">Gavel does not take payment. Check it is the person you expect before you send anything.</p>
         </>
       ) : (
         <p className="gv-paycard-fine">The host will tell you how to pay.</p>
+      )}
+      {pageUrl && (
+        <>
+          <p className="gv-paycard-label">Keep this link to pay later</p>
+          <div className="gv-paycard-note gv-paycard-keep">
+            <span>{pageUrl}</span>
+            <button className="gv-pill" type="button" onClick={() => void copyPage()}>
+              {copied === 'link' ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          {copied === 'linkno' && <p className="gv-paycard-fine">Copying is blocked here. Select the address above to copy it.</p>}
+          <p className="gv-paycard-fine">Only you have this address. It works in any browser until the auction is cleared away.</p>
+        </>
       )}
     </div>
   )
@@ -1627,6 +1670,7 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
   const [rounds, setRounds] = useState<RoundRecord[] | null>(null)
   const [csvCopied, setCsvCopied] = useState(false)
   const [csvText, setCsvText] = useState<string | null>(null)
+  const [payError, setPayError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -1641,6 +1685,26 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
       active = false
     }
   }, [sessionKey, session.status, session.roundNo])
+
+  // The host's own tally of who has paid. The tick shows at once and is put
+  // back if the server did not take it.
+  async function togglePaid(round: RoundRecord) {
+    const next = !round.paid
+    setPayError('')
+    const apply = (paid: boolean) =>
+      setRounds((current) => current && current.map((r) => (r.roundNo === round.roundNo ? { ...r, paid } : r)))
+    apply(next)
+    try {
+      const result = await markPaid(sessionKey, round.roundNo, next)
+      if (!result.ok) {
+        apply(!next)
+        setPayError(result.error)
+      }
+    } catch {
+      apply(!next)
+      setPayError('Could not save that. Check your connection and try again.')
+    }
+  }
 
   async function copyCsv() {
     try {
@@ -1662,6 +1726,7 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
   if (!rounds || rounds.length === 0) return null
   const sold = rounds.filter((round) => round.outcome === 'sold')
   const total = sold.reduce((sum, round) => sum + round.finalBid, 0)
+  const toCollect = sold.filter((round) => !round.paid).reduce((sum, round) => sum + round.finalBid, 0)
 
   return (
     <div className="gv-receipt-wrap">
@@ -1670,7 +1735,25 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
         <ol>
           {rounds.map((round) => (
             <li key={round.roundNo}>
-              <span>
+              {round.outcome === 'sold' ? (
+                <button
+                  className="gv-tick"
+                  type="button"
+                  role="checkbox"
+                  aria-checked={round.paid}
+                  aria-label={`${round.itemName}: ${round.paid ? 'paid' : 'not paid yet'}`}
+                  onClick={() => void togglePaid(round)}
+                >
+                  {round.paid && (
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="m4 10.5 4 4 8-9" />
+                    </svg>
+                  )}
+                </button>
+              ) : (
+                <span className="gv-tick-gap" aria-hidden="true" />
+              )}
+              <span className="gv-receipt-main">
                 {round.itemName}
                 <em>
                   {round.outcome === 'sold' && round.winner
@@ -1686,7 +1769,13 @@ function Receipt({ state, sessionKey }: { state: SessionState; sessionKey: strin
           <span>Raised</span>
           <span>{formatUsd(total)}</span>
         </p>
+        {sold.length > 0 && (
+          <p className="gv-receipt-collect">
+            {toCollect === 0 ? 'All paid' : `${formatUsd(toCollect)} of ${formatUsd(total)} still to collect`}
+          </p>
+        )}
       </div>
+      {payError && <p className="gv-paycard-fine">{payError}</p>}
       <div className="gv-receipt-foot">
         <span className="gv-receipt-actions">
           <a href={resultsUrl(sessionKey, 'csv')} download="gavel-results.csv">

@@ -1,0 +1,168 @@
+.wp {
+  box-sizing: border-box;
+  width: min(100%, 440px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 26px 22px 40px;
+  background: #fbf7ef;
+  color: #2a211b;
+  font-family: var(--font-body), ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+body:has(.wp) {
+  background: #fbf7ef;
+}
+
+.wp-brand {
+  margin: 0;
+  font-family: var(--font-display), 'Iowan Old Style', Georgia, serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.wp h1 {
+  margin: 34px 0 4px;
+  font-family: var(--font-display), 'Iowan Old Style', Georgia, serif;
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.wp-sub {
+  margin: 0;
+  color: #6b5b4e;
+}
+
+.wp-owe {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 26px 0 0;
+}
+
+.wp-owe small {
+  font-size: 16px;
+  color: #6b5b4e;
+}
+
+.wp-owe b {
+  font-family: var(--font-display), 'Iowan Old Style', Georgia, serif;
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.wp-go {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 58px;
+  margin-top: 14px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #2a211b;
+  color: #fbf7ef;
+  font-size: 17px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.wp-go:focus-visible {
+  outline: 3px solid #176b47;
+  outline-offset: 3px;
+}
+
+.wp-alt {
+  margin: 12px 2px 0;
+  font-size: 15px;
+  color: #6b5b4e;
+}
+
+.wp-alt code {
+  font-family: var(--font-numeral), ui-monospace, monospace;
+  font-size: 14px;
+  color: #2a211b;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.wp-done {
+  margin: 26px 0 0;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: #dff3e8;
+  color: #176b47;
+  font-weight: 700;
+}
+
+.wp-receipt {
+  margin-top: 28px;
+  padding: 16px 18px 10px;
+  background: #fffdf8;
+  box-shadow: 0 14px 30px rgba(72, 52, 30, 0.13);
+  font-family: var(--font-numeral), ui-monospace, monospace;
+  font-size: 14px;
+}
+
+.wp-receipt h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  color: #6b5b4e;
+}
+
+.wp-receipt ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wp-receipt li,
+.wp-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.wp-receipt li span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wp-receipt em {
+  display: block;
+  font-style: normal;
+  color: #176b47;
+}
+
+.wp-total {
+  margin: 8px 0 0;
+  padding: 10px 0 8px;
+  border-top: 1.5px dashed rgba(42, 33, 27, 0.2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wp-fine {
+  margin: 28px 2px 0;
+  font-size: 14px;
+  color: #6b5b4e;
+}
+
+.wp-fine b {
+  color: #2a211b;
+}
+
+.wp-fine a {
+  color: inherit;
+}

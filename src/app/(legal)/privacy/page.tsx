@@ -67,6 +67,13 @@ export default function Privacy() {
           </tr>
           <tr>
             <td>
+              <strong>Your private winner page</strong>: when you win a lot, a random address that only you hold, and a tick the host can
+              set when you have paid. The page shows the lots you won, what you owe and the host’s payment line, and no one else’s.
+            </td>
+            <td>So you can pay after the meeting ends. The address is not guessable and the page is hidden from search engines.</td>
+          </tr>
+          <tr>
+            <td>
               <strong>If you sign in with Zoom in a browser</strong>: your Zoom user ID (kept only as the same keyed hash) and your
               Zoom display name.
             </td>
@@ -99,7 +106,7 @@ export default function Privacy() {
 
       <h2>Money</h2>
       <p>
-        The app never handles payment. It records who won and for how much, and shows the winner the payment line the host wrote. The
+        The app never handles payment. It records who won and for how much, and shows the winner the payment line the host wrote, on their own private page as well as in the app. The host can tick lots off as paid; that tick is the host’s own note and Gavel cannot see or check any payment. The
         host and the winner settle up themselves, outside the app. We collect no card or bank details, and we cannot check that a
         payment line is genuine.
       </p>
@@ -150,11 +157,11 @@ export default function Privacy() {
       <h2>How long we keep it</h2>
       <ul>
         <li>Auctions started from a browser link or the demo page are deleted 24 hours after their last activity.</li>
-        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity, along with the host’s payment line.</li>
+        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity, along with the host’s payment line and every winner page.</li>
         <li>The counters that hold IP addresses are deleted within 1 hour of expiring.</li>
         <li>
           When you remove the app from Zoom, Zoom notifies us and we erase you straight away: your max bids are deleted, and your name
-          is replaced by “Removed bidder” on your bids and on any lot you won, and a payment line you set as host is deleted. The record of the sale stays; your name does not.
+          is replaced by “Removed bidder” on your bids and on any lot you won, your private winner pages are deleted, and a payment line you set as host is deleted. The record of the sale stays; your name does not.
         </li>
       </ul>
 

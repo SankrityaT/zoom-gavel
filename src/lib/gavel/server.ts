@@ -151,7 +151,7 @@ export async function getPaymentNote(uuid: string) {
 
 export async function paymentForWinner(uuid: string, bidderKey: string | null) {
   const raw = await rpc<{
-    wins: { round_no: number; item_name: string; final_bid: number; bought_now: boolean }[]
+    wins: { round_no: number; item_name: string; final_bid: number; bought_now: boolean; paid: boolean }[]
     note: string | null
   }>('payment_for_winner', { p_uuid: uuid, p_key: bidderKey })
   return {
@@ -160,9 +160,35 @@ export async function paymentForWinner(uuid: string, bidderKey: string | null) {
       itemName: w.item_name,
       finalBid: w.final_bid,
       boughtNow: w.bought_now,
+      paid: w.paid === true,
     })) satisfies PaymentWin[],
     note: raw.note,
   }
+}
+
+// The winner's private page address, made on the first ask and the same after.
+export async function winLinkFor(uuid: string, bidderKey: string | null, candidate: string) {
+  return rpc<string | null>('win_link_for', { p_uuid: uuid, p_key: bidderKey, p_token: candidate })
+}
+
+export type WinnerPage = {
+  wins: { round_no: number; item_name: string; final_bid: number; bought_now: boolean; paid: boolean; closed_at: string }[]
+  note: string | null
+  expires_at: string
+}
+
+export async function winnerPage(token: string) {
+  return rpc<WinnerPage | null>('winner_page', { p_token: token })
+}
+
+// The host ticks a sold lot as paid, or takes the tick back.
+export async function setRoundPaid(uuid: string, hostKey: string | null, roundNo: number, paid: boolean) {
+  return rpc<{ ok: true; paid: boolean } | { ok: false; reason: string }>('set_round_paid', {
+    p_uuid: uuid,
+    p_host_key: hostKey,
+    p_round_no: roundNo,
+    p_paid: paid,
+  })
 }
 
 // Records a role change Zoom reported: on for a co-host (or a host who took
@@ -238,7 +264,7 @@ export async function getRounds(uuid: string) {
   const { data, error } = await getServiceClient()
     .from('auction_rounds')
     .select(
-      'round_no, item_name, opening_bid, reserve_price, buy_now_price, final_bid, winner_key, winner_name, winner_verified, bid_count, outcome, bought_now, closed_at',
+      'round_no, item_name, opening_bid, reserve_price, buy_now_price, final_bid, winner_key, winner_name, winner_verified, bid_count, outcome, bought_now, closed_at, paid_at',
     )
     .eq('session_uuid', uuid)
     .order('round_no', { ascending: true })

@@ -18,6 +18,7 @@ export const LIMITS = {
   identityPerIp: { limit: 600, windowSeconds: 60 },
   oauthPerIp: { limit: 120, windowSeconds: 60 },
   paymentPerIp: { limit: 300, windowSeconds: 60 },
+  winnerPagePerIp: { limit: 120, windowSeconds: 60 },
   webhookPerIp: { limit: 120, windowSeconds: 60 },
 } as const
 

@@ -233,7 +233,8 @@ await scenario('S7', 'host stop vs in-flight bids', async () => {
   check('S7 currentBid is max accepted', acceptedAmounts.length === 0 || json.session.currentBid === Math.max(...acceptedAmounts))
   check('S7 rejections are not_open/too_low', bids.filter((r) => r.status === 409).every((r) => ['not_open', 'too_low', 'expired'].includes(r.json.reason)))
   const closedAt = new Date(json.session.closedAt).getTime()
-  check('S7 no bid after closedAt', json.leaderboard.every((e) => new Date(e.lastBidAt).getTime() <= closedAt + 50))
+  // closedAt is the stop's transaction time, which can precede the lock it waits on by a few ms.
+  check('S7 no bid after closedAt', json.leaderboard.every((e) => new Date(e.lastBidAt).getTime() <= closedAt + 250))
 })
 
 await scenario('S8', 'bid on idle session', async () => {
@@ -816,6 +817,87 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     await start(practice, { openingBid: 100 })
     const practiceBid = await bid(practice, 150, 'Practice host')
     check('S31k practice rooms stay open to everyone', practiceBid.status === 200, String(practiceBid.status))
+  })
+
+  await scenario('S32', "a winner's private page, and the host ticking off payments", async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const host = mintCookie('userHostF', mid)
+    const winner = mintCookie('userWinnerF', mid)
+    const other = mintCookie('userOtherF', mid)
+    const cohost = mintCookie('userCohostF', mid)
+    await signed({ event: 'meeting.started', payload: { object: { uuid: mid, host_id: 'userHostF', id: 1 } } })
+    await signed({ event: 'meeting.participant_role_changed', event_ts: Date.now(), payload: { object: { uuid: mid, host_id: 'userHostF', participant: { participant_user_id: 'userCohostF', user_name: 'x', old_role: 'attendee', new_role: 'co-host' } } } })
+    const enc = encodeURIComponent(k)
+    const mine = (cookie) => api(`${enc}/payment`, { method: 'POST', cookie, body: { action: 'mine', bidderId: 'x' } })
+    const pay = (cookie, note) => api(`${enc}/payment`, { method: 'POST', cookie, body: { action: 'set', note } })
+    const tick = (cookie, roundNo, paid) => api(`${enc}/paid`, { method: 'POST', cookie, body: { roundNo, paid } })
+    const page = async (token) => {
+      const res = await fetch(`${BASE_URL}/p/${token}`)
+      return { status: res.status, text: await res.text(), cache: res.headers.get('cache-control') ?? '' }
+    }
+
+    await start(k, { openingBid: 100, itemName: 'Glass horse' }, host)
+    await bid(k, 150, 'Winner Name', winner)
+    await bid(k, 120, 'Other Name', other)
+    await stop(k, host)
+    const first = await mine(winner)
+    const token = first.json?.pageToken
+    check('S32b the first ask returns a long random token', first.status === 200 && typeof token === 'string' && token.length >= 24, JSON.stringify(first.json)?.slice(0, 200))
+    check('S32c asking again returns the same token', (await mine(winner)).json?.pageToken === token)
+    const loser = await mine(other)
+    check('S32d someone who did not win gets no page', loser.json?.wins?.length === 0 && !loser.json?.pageToken, JSON.stringify(loser.json))
+
+    check('S32e the host sets how to pay with a Venmo link', (await pay(host, 'https://venmo.com/u/sam-hosts')).status === 200)
+    const shown = await page(token)
+    check('S32f the page shows the lot, the amount and the host\'s line', shown.status === 200 && shown.text.includes('Glass horse') && shown.text.includes('$150') && shown.text.includes('venmo.com/u/sam-hosts'), String(shown.status))
+    check('S32g it offers a button that names Venmo', /Pay\s*(<!-- -->)?\s*\$150\s*(<!-- -->)?\s*with\s*(<!-- -->)?\s*Venmo/.test(shown.text) || (shown.text.includes('Venmo') && shown.text.includes('wp-go')))
+    check('S32h it is never cached or indexed', /no-store|no-cache|private/.test(shown.cache) && shown.text.includes('noindex'), shown.cache)
+    check('S32i it never names another bidder', !shown.text.includes('Other Name'))
+
+    check('S32j a made-up token is a 404', (await page('A'.repeat(32))).status === 404)
+    check('S32k a malformed token is a 404', (await page('short')).status === 404)
+
+    await pay(host, 'https://venmo.com.evil.example/steal')
+    const fake = await page(token)
+    check('S32l a look-alike link is shown as text, with no button', fake.status === 200 && !fake.text.includes('wp-go'), 'button present')
+    await pay(host, 'Zelle to sam@example.com')
+    const plain = await page(token)
+    check('S32m a plain handle is shown as text', plain.text.includes('Zelle to sam@example.com') && !plain.text.includes('wp-go'))
+
+    // The host's tally.
+    const asWinner = await tick(winner, 1, true)
+    check('S32n a bidder cannot mark anything paid (403)', asWinner.status === 403, String(asWinner.status))
+    check('S32o a visitor with no identity cannot (401)', (await api(`${enc}/paid`, { method: 'POST', body: { roundNo: 1, paid: true } })).status === 401)
+    check('S32p an unknown lot is a 404', (await tick(host, 99, true)).status === 404)
+    check('S32q a bad body is a 400', (await api(`${enc}/paid`, { method: 'POST', cookie: host, body: { roundNo: 'x', paid: 'yes' } })).status === 400)
+    check('S32r the host marks it paid', (await tick(host, 1, true)).status === 200)
+    const results = await api(`${enc}/results`, { cookie: host })
+    check('S32s the results say paid', results.json?.rounds?.[0]?.paid === true, JSON.stringify(results.json?.rounds?.[0]))
+    const csv = await fetch(`${BASE_URL}/api/session/${enc}/results?format=csv`, { headers: { cookie: host } })
+    const csvText = await csv.text()
+    const header = csvText.split('\r\n')[0].split(',')
+    const row = csvText.split('\r\n')[1]
+    check('S32t the CSV has a Paid column that says yes', header.includes('Paid') && row.split(',')[header.indexOf('Paid')] === 'yes', csvText.slice(0, 300))
+    const paidPage = await page(token)
+    check('S32u the winner\'s page now says it is paid', paidPage.text.includes('marked this as paid'), 'not shown')
+    check('S32v the winner\'s panel data shows it too', (await mine(winner)).json?.wins?.[0]?.paid === true)
+    check('S32w a co-host can take the tick back', (await tick(cohost, 1, false)).status === 200 && (await api(`${enc}/results`, { cookie: host })).json.rounds[0].paid === false)
+    check('S32x marking twice is harmless', (await tick(host, 1, true)).status === 200 && (await tick(host, 1, true)).status === 200)
+
+    // Removing the app erases the page along with the person.
+    const gone = await signed({ event: 'app_deauthorized', payload: { user_id: 'userWinnerF', account_id: 'acct', client_id: 'cid' } })
+    check('S32y Zoom reports the winner removed the app', gone.status === 200, String(gone.status))
+    check('S32z their private page is gone (404)', (await page(token)).status === 404)
+
+    // Practice rooms: a guest winner gets a page too.
+    const sk = key()
+    await init(sk)
+    await start(sk, { openingBid: 100, itemName: 'Practice lot' })
+    await post_bid(sk, 130, 'Guest Winner', 'a'.repeat(32))
+    await stop(sk)
+    const g = await api(`${encodeURIComponent(sk)}/payment`, { method: 'POST', body: { action: 'mine', bidderId: 'Guest Winner', bidderSecret: 'a'.repeat(32) } })
+    check('S32zz a guest winner in a practice room gets a page', typeof g.json?.pageToken === 'string' && (await page(g.json.pageToken)).text.includes('Practice lot'), JSON.stringify(g.json)?.slice(0, 160))
   })
 
 } else {

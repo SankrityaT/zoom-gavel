@@ -1,8 +1,9 @@
+import { randomBytes } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
 import { hostKeyFor } from '@/lib/gavel/host'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
-import { getPaymentNote, getState, paymentForWinner, setPaymentNote } from '@/lib/gavel/server'
+import { getPaymentNote, getState, paymentForWinner, setPaymentNote, winLinkFor } from '@/lib/gavel/server'
 import { anonBidderKey, boundedString, guestSecretFrom, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
 
 // How winners pay. Gavel never takes money: the host says where to send it
@@ -101,7 +102,10 @@ export async function POST(
         if (secret === undefined) return badRequest('bidderSecret is malformed')
         key = await anonBidderKey(name, secret)
       }
-      return NextResponse.json(await paymentForWinner(uuid, key), { headers: { 'Cache-Control': 'no-store' } })
+      const mine = await paymentForWinner(uuid, key)
+      // Winners get one private page per session, made the first time they ask.
+      const pageToken = mine.wins.length > 0 ? await winLinkFor(uuid, key, randomBytes(24).toString('base64url')) : null
+      return NextResponse.json({ ...mine, pageToken }, { headers: { 'Cache-Control': 'no-store' } })
     }
 
     return badRequest("action must be 'set' or 'mine'")

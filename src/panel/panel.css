@@ -970,9 +970,50 @@
   padding: 5px 0;
 }
 
-.gv-receipt li span:first-child {
+.gv-receipt li {
+  align-items: flex-start;
+}
+
+.gv-receipt .gv-receipt-main {
+  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.gv-tick,
+.gv-tick-gap {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+}
+
+.gv-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px solid var(--ink-3);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+}
+
+.gv-tick[aria-checked='true'] {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.gv-tick:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+.gv-receipt-collect {
+  margin: 0;
+  padding: 0 0 12px;
+  text-align: right;
+  color: var(--ink-3);
 }
 
 .gv-receipt em {
@@ -1449,6 +1490,25 @@
   min-width: 0;
   overflow-wrap: anywhere;
   user-select: all;
+}
+
+.gv-paycard-keep span {
+  font-size: 13px;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.gv-paycard-go {
+  display: block;
+  margin-top: 10px;
+  padding: 13px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper, #fbf7ef);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
 }
 
 .gv-paycard-fine {

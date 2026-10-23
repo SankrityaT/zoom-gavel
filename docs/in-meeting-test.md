@@ -54,7 +54,7 @@ You need three people or devices:
    - A double beep when the clock turns red, a tick for the last five seconds,
      then the gavel and a Sold stamp on every screen.
    - The winner sees "You won it" and a different sound; the others "Sold to (name)".
-8b. **How winners pay.** Before the lot ends, type "Venmo @test" under How winners pay and Save. When the lot sells the winner gets a green card with that text and a Copy button; the others see nothing. If Copy does nothing inside Zoom, the text can still be selected by hand; note it.
+8b. **How winners pay.** Before the lot ends, type "Venmo @test" under How winners pay and Save. When the lot sells the winner gets a green card with that text and a Copy button; the others see nothing. The card also has Keep this link: copy it and open it in a browser outside Zoom; it should show the lot and the amount. The host's So far list has a circle beside the lot: tick it and the page says paid (the card follows within 30 seconds). If Copy does nothing inside Zoom, the text can still be selected by hand; note it.
 9. **Next lot.** Host clicks Start (second item): it opens on every screen with
    one tap, and nobody's old max carries over.
 10. **Results.** The host's receipt lists both lots and the total. Click

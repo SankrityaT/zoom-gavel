@@ -154,8 +154,8 @@ async function queueRequest(sessionKey: string, body: unknown): Promise<QueueRes
 }
 
 // How winners pay. The host sets the note; a winner reads what they owe.
-export type PaymentWin = { roundNo: number; itemName: string; finalBid: number; boughtNow: boolean }
-export type MyPayment = { wins: PaymentWin[]; note: string | null }
+export type PaymentWin = { roundNo: number; itemName: string; finalBid: number; boughtNow: boolean; paid: boolean }
+export type MyPayment = { wins: PaymentWin[]; note: string | null; pageToken?: string | null }
 
 export async function fetchPaymentNote(sessionKey: string): Promise<string | null | undefined> {
   const res = await fetch(sessionUrl(sessionKey, '/payment'), { cache: 'no-store' })
@@ -193,3 +193,16 @@ export async function fetchMyPayment(sessionKey: string, bidderName: string): Pr
 export const queueAdd = (sessionKey: string, lot: QueueLot) => queueRequest(sessionKey, { action: 'add', ...lot })
 export const queueRemove = (sessionKey: string, id: number) => queueRequest(sessionKey, { action: 'remove', id })
 export const queueStartNext = (sessionKey: string) => queueRequest(sessionKey, { action: 'start' })
+
+// The host ticks a sold lot as paid, or takes the tick back.
+export async function markPaid(
+  sessionKey: string,
+  roundNo: number,
+  paid: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await postJson(sessionUrl(sessionKey, '/paid'), { roundNo, paid })
+  if (res.ok) return { ok: true }
+  if (res.status === 429) return { ok: false, error: 'Too many requests. Try again in a moment.' }
+  if (res.status === 403 || res.status === 401) return { ok: false, error: 'Only the host can mark lots as paid.' }
+  return { ok: false, error: 'Could not save that. Try again.' }
+}
