@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
 import { MAX_BID } from '@/lib/gavel/demo'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
+import { isHostBidding } from '@/lib/gavel/host'
 import { getState, setMaxBid } from '@/lib/gavel/server'
 import { anonBidderKey, boundedInt, boundedString, guestSecretFrom, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
 
@@ -48,6 +49,13 @@ export async function POST(
       rule(`bid:who:${uuid}:${bidderKey}`, LIMITS.bidPerBidder),
     ])
     if (limited) return limited
+
+    if (await isHostBidding(uuid, viewer)) {
+      return NextResponse.json(
+        { ok: false, reason: 'host_cannot_bid', state: await getState(uuid, viewer) },
+        { status: 409 },
+      )
+    }
 
     const outcome = await setMaxBid(uuid, bidderKey, viewer.identity?.nm ?? bidderName, viewer.verified, amount)
     const state = await getState(uuid, viewer)

@@ -224,7 +224,12 @@ function LivePanel({
 
       {/* Keyed by round so an armed Buy Now or a typed amount never carries
           into the next lot. */}
-      {isOpen && <BidDock key={session.roundNo} state={state} auction={auction} />}
+      {isOpen &&
+        (viewer.isHost && !session.sandbox ? (
+          <p className="gv-after">Hosts and co-hosts watch the bids and do not place them.</p>
+        ) : (
+          <BidDock key={session.roundNo} state={state} auction={auction} />
+        ))}
       {isOpen && canHost && <EndRound auction={auction} upNext={session.upNext} />}
 
       {session.status !== 'idle' && (
@@ -581,11 +586,13 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
             ? `Your max has to be at least ${formatUsd(result.minAmount ?? maxFloor)}.`
             : result.reason === 'over_buy_now'
               ? `Your max has to stay under the Buy Now price. The most you can set is ${formatUsd(result.maxAllowed ?? bidCeiling)}.`
-              : result.reason === 'expired' || result.reason === 'not_open'
-                ? 'The round closed before your max was set.'
-                : result.reason === 'rate_limited'
-                  ? 'Too many changes at once. Try again in a moment.'
-                  : 'Your max was not saved. Try again.',
+              : result.reason === 'host_cannot_bid'
+                ? 'Hosts and co-hosts do not bid in their own auction.'
+                : result.reason === 'expired' || result.reason === 'not_open'
+                  ? 'The round closed before your max was set.'
+                  : result.reason === 'rate_limited'
+                    ? 'Too many changes at once. Try again in a moment.'
+                    : 'Your max was not saved. Try again.',
         )
       }
     } catch {
@@ -620,11 +627,13 @@ export function BidDock({ state, auction }: { state: SessionState; auction: Auct
         setMessage(
           result.reason === 'too_low'
             ? `Someone got there first. The lowest bid is now ${formatUsd(result.minAmount ?? suggested)}.`
-            : result.reason === 'expired' || result.reason === 'not_open'
-              ? 'The round closed before your bid arrived.'
-              : result.reason === 'rate_limited'
-                ? 'Too many bids at once. Try again in a moment.'
-                : 'That bid was not accepted. Try again.',
+            : result.reason === 'host_cannot_bid'
+              ? 'Hosts and co-hosts do not bid in their own auction.'
+              : result.reason === 'expired' || result.reason === 'not_open'
+                ? 'The round closed before your bid arrived.'
+                : result.reason === 'rate_limited'
+                  ? 'Too many bids at once. Try again in a moment.'
+                  : 'That bid was not accepted. Try again.',
         )
       }
     } catch {

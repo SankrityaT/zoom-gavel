@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
 import { MAX_BID } from '@/lib/gavel/demo'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
+import { isHostBidding } from '@/lib/gavel/host'
 import { ensureSession, getState, placeBid } from '@/lib/gavel/server'
 import { anonBidderKey, boundedInt, boundedString, guestSecretFrom, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
 
@@ -89,6 +90,13 @@ export async function POST(
       rule(`bid:who:${uuid}:${bidderKey}`, LIMITS.bidPerBidder),
     ])
     if (limited) return limited
+
+    if (await isHostBidding(uuid, viewer)) {
+      return NextResponse.json(
+        { accepted: false, reason: 'host_cannot_bid', state: await getState(uuid, viewer) },
+        { status: 409 },
+      )
+    }
 
     // Someone signed in with Zoom bids under the name Zoom gave, not one they typed.
     const outcome = await placeBid(uuid, amount, bidderKey, viewer.identity?.nm ?? bidderName, viewer.verified)

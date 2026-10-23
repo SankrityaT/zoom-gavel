@@ -50,6 +50,7 @@ Under the hood:
   both win.
 - **Verified identity.** Zoom tells the server who each person is and who the
   meeting host is; only the host can run rounds in their meeting.
+- **No shill bidding.** The host and co-hosts run the auction and do not bid in it. The server refuses their bids and max bids in real meetings (`host_cannot_bid`), and their panel shows no bid controls. Practice rooms stay open to everyone.
 - **Co-hosts and browser sign-in.** Co-hosts Zoom names run the auction like the host. People bidding from a browser can sign in with Zoom to be verified bidders, or bid as guests that nobody can impersonate.
 - **Tested.** A 185-assertion concurrency and security suite runs against the
   live site (bid storms, simultaneous Buy Now, forged identity, privacy of bid
@@ -253,6 +254,11 @@ host and starting a round stamps the starter as host, so the API substitutes
 the host's own key when a verified co-host acts (`hostKeyFor`). The host's
 claim is never overwritten, and if the host changed in between, the old key no
 longer matches and SQL refuses.
+
+The same read keeps hosts out of the bidding: before a bid or max bid is
+accepted in a meeting session, `isHostBidding` checks whether the verified
+viewer is the host or a named co-host and refuses with `host_cannot_bid`. Once
+Zoom demotes a co-host, they can bid like anyone else.
 
 Browser identity. A person outside the Zoom client is one of two things. A
 guest: the name they type plus a private random secret in their browser, hashed

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { Viewer } from './auth'
-import { getRawState } from './server'
+import { buildState, getRawState } from './server'
 import { isSandboxKey } from './types'
 
 // Who may run a session. Meeting sessions need a verified Zoom identity
@@ -28,4 +28,14 @@ export async function hostKeyFor(
     return { hostKey: raw.session.host_key }
   }
   return { hostKey: viewer.bidderKey }
+}
+
+// The host and co-hosts run the auction and see every bid, so they do not
+// bid in it: a seller bidding on their own lot is how prices get pushed up.
+// Practice rooms stay open to everyone. True when this viewer is the verified
+// host or a co-host of a real meeting.
+export async function isHostBidding(uuid: string, viewer: Viewer): Promise<boolean> {
+  if (isSandboxKey(uuid) || !viewer.verified || !viewer.inThisMeeting) return false
+  const raw = await getRawState(uuid, viewer.bidderKey)
+  return raw !== null && buildState(raw, viewer).viewer.isHost
 }

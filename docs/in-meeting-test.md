@@ -66,6 +66,7 @@ You need three people or devices:
 13. **Co-host.** In Zoom, make Bidder A a co-host (Participants, More, Make co-host).
     - A's panel changes to "You're co-hosting" and shows the host controls (it may take a few seconds).
     - A can start a lot, use the queue, end a round and download the CSV. The host's panel still says "You're hosting" and can still end a round.
+    - A's panel shows no bid buttons while A is a co-host. Hosts and co-hosts watch the bids and do not place them.
     - Take the co-host role away: A's controls disappear. If A got no controls at all, note it: it means Zoom's `participant_user_id` did not match the ID Gavel sees for A, which needs a one-line fix.
 14. **Browser sign-in.** On Bidder B's browser (join link, not in Zoom), click Sign in with Zoom at the top, allow, and land back signed in as your Zoom name.
     - B bids; the host sees B's name. B reloads and is still signed in.

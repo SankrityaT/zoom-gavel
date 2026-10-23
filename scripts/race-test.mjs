@@ -653,20 +653,21 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const k = meetingKey(mid)
     const leaver = mintCookie('userLeaver', mid)
     const stayer = mintCookie('userStayer', mid)
-    check('S24a leaver starts a round', (await start(k, {}, leaver)).status === 200)
+    const owner = mintCookie('userOwnerE', mid)
+    check('S24a the host starts a round', (await start(k, {}, owner)).status === 200)
     const hand = await bid(k, 150, 'Leaver Name', leaver)
     const other = await bid(k, 175, 'Stayer Name', stayer)
     const ceiling = await api(`${encodeURIComponent(k)}/max`, { method: 'POST', body: { amount: 900, bidderId: 'Leaver Name' }, cookie: leaver })
     check('S24b bids and a max bid exist', hand.status === 200 && other.status === 200 && ceiling.status === 200, JSON.stringify([hand.status, other.status, ceiling.status]))
-    const stopped = await stop(k, leaver)
-    const before = await api(`${encodeURIComponent(k)}/results`, { cookie: leaver })
+    const stopped = await stop(k, owner)
+    const before = await api(`${encodeURIComponent(k)}/results`, { cookie: owner })
     check('S24c the sale names the winner before removal', stopped.status === 200 && JSON.stringify(before.json).includes('Leaver Name'), JSON.stringify(before.json).slice(0, 200))
 
     const noUser = await signed({ event: 'app_deauthorized', payload: {} })
     check('S24d a notice without a user is a 400', noUser.status === 400, String(noUser.status))
     const forged = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver' } }, { token: 'wrong' })
     check('S24e a forged notice is a 401 and removes nothing', forged.status === 401, String(forged.status))
-    const still = await api(`${encodeURIComponent(k)}/results`, { cookie: leaver })
+    const still = await api(`${encodeURIComponent(k)}/results`, { cookie: owner })
     check('S24f nothing was removed by the forged notice', JSON.stringify(still.json).includes('Leaver Name'))
 
     if (process.env.VERIFICATION_TOKEN) {
@@ -685,17 +686,25 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     const state = await get(k, stayer)
     check('S24h the name is gone from the live state', !JSON.stringify(state.json).includes('Leaver Name'))
     check('S24i the other bidder is untouched', JSON.stringify(state.json).includes('Stayer Name'))
-    // The host claim went with them. The first verified participant to start a
-    // round claims it, and can then read the results.
-    const claim = await start(k, {}, stayer)
-    check('S24j the host role is free to claim again', claim.status === 200, String(claim.status))
-    const after = await api(`${encodeURIComponent(k)}/results`, { cookie: stayer })
+    // The host is someone else, so their claim is untouched.
+    const claim = await get(k, owner)
+    check('S24j the host is still the host', claim.json.viewer.isHost === true, JSON.stringify(claim.json.viewer))
+    const after = await api(`${encodeURIComponent(k)}/results`, { cookie: owner })
     const text = JSON.stringify(after.json)
     check('S24k the name is gone from the results', after.status === 200 && !text.includes('Leaver Name'), text.slice(0, 240))
     // The leaver's max bid (900) answered the other bid (175) with 200, and won.
     check('S24l the sale is still on record, with no name on it', after.json?.rounds?.length === 1 && after.json.rounds[0].finalBid === 200 && after.json.rounds[0].winner?.name === 'Removed bidder', text.slice(0, 240))
     const again = await signed({ event: 'app_deauthorized', payload: { user_id: 'userLeaver' } })
     check('S24m the notice is safe to repeat', again.status === 200, String(again.status))
+    // When the person who removes the app is the host, the claim goes with them.
+    const mid2 = `race-mid-${randomBytes(4).toString('hex')}`
+    const k2 = meetingKey(mid2)
+    const hostLeaver = mintCookie('userHostLeaver', mid2)
+    const heir = mintCookie('userHeir', mid2)
+    check('S24n a host runs a round', (await start(k2, {}, hostLeaver)).status === 200 && (await stop(k2, hostLeaver)).status === 200)
+    await signed({ event: 'app_deauthorized', payload: { user_id: 'userHostLeaver', account_id: 'acct', client_id: 'cid' } })
+    const claimed = await start(k2, {}, heir)
+    check('S24o the host role is free to claim again', claimed.status === 200, String(claimed.status))
   })
   await scenario('S25', 'co-hosts named by Zoom run the meeting', async () => {
     const mid = `race-mid-${randomBytes(4).toString('hex')}`
@@ -767,6 +776,46 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     check('S25w a newer "attendee" notice removes them', (await get(k, late)).json.viewer.isHost === false)
     await role('userLateC', 'co-host', 'attendee', { eventTs: base + 2500 })
     check('S25x an older "co-host" notice that arrives late does not bring them back', (await get(k, late)).json.viewer.isHost === false)
+  })
+
+  await scenario('S31', 'hosts and co-hosts do not bid in their own meeting', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const host = mintCookie('userHostD', mid)
+    const cohost = mintCookie('userCohostD', mid)
+    const attendee = mintCookie('userAttendeeD', mid)
+    await signed({ event: 'meeting.started', payload: { object: { uuid: mid, host_id: 'userHostD', id: 1 } } })
+    await signed({ event: 'meeting.participant_role_changed', event_ts: Date.now(), payload: { object: { uuid: mid, host_id: 'userHostD', participant: { participant_user_id: 'userCohostD', user_name: 'x', old_role: 'attendee', new_role: 'co-host' } } } })
+    const opened = await start(k, { openingBid: 100 }, host)
+    check('S31a the host opens a lot', opened.status === 200, String(opened.status))
+    const maxCall = (cookie, amount) => api(`${encodeURIComponent(k)}/max`, { method: 'POST', cookie, body: { amount, bidderId: 'x' } })
+
+    const hostBid = await bid(k, 150, 'Host', host)
+    check('S31b the host cannot bid', hostBid.status === 409 && hostBid.json.reason === 'host_cannot_bid', JSON.stringify([hostBid.status, hostBid.json?.reason]))
+    const coBid = await bid(k, 150, 'Cohost', cohost)
+    check('S31c nor can a co-host', coBid.status === 409 && coBid.json.reason === 'host_cannot_bid', JSON.stringify([coBid.status, coBid.json?.reason]))
+    const hostMax = await maxCall(host, 300)
+    check('S31d the host cannot set a max bid', hostMax.status === 409 && hostMax.json.reason === 'host_cannot_bid', JSON.stringify([hostMax.status, hostMax.json?.reason]))
+    const coMax = await maxCall(cohost, 300)
+    check('S31e nor can a co-host', coMax.status === 409 && coMax.json.reason === 'host_cannot_bid', JSON.stringify([coMax.status, coMax.json?.reason]))
+    const mid1 = await get(k, attendee)
+    check('S31f nothing was recorded from them', totalBids(mid1.json) === 0 && mid1.json.session.leader === null, JSON.stringify([totalBids(mid1.json), mid1.json.session.leader]))
+
+    const real = await bid(k, 150, 'Real bidder', attendee)
+    check('S31g an attendee still bids', real.status === 200 && real.json.accepted === true, JSON.stringify([real.status, real.json?.reason]))
+    check('S31h and can set a max bid', (await maxCall(attendee, 400)).status === 200)
+
+    const demoted = await signed({ event: 'meeting.participant_role_changed', event_ts: Date.now() + 5000, payload: { object: { uuid: mid, host_id: 'userHostD', participant: { participant_user_id: 'userCohostD', user_name: 'x', old_role: 'co-host', new_role: 'attendee' } } } })
+    check('S31i Zoom demotes the co-host', demoted.status === 200)
+    const nowBids = await bid(k, 1000, 'Cohost', cohost)
+    check('S31j a demoted co-host may bid like anyone', nowBids.status === 200 || (nowBids.status === 409 && nowBids.json.reason !== 'host_cannot_bid'), JSON.stringify([nowBids.status, nowBids.json?.reason]))
+
+    // Practice rooms have no host, so everyone there bids, whoever opened it.
+    const practice = key()
+    await init(practice)
+    await start(practice, { openingBid: 100 })
+    const practiceBid = await bid(practice, 150, 'Practice host')
+    check('S31k practice rooms stay open to everyone', practiceBid.status === 200, String(practiceBid.status))
   })
 
 } else {

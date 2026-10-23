@@ -182,6 +182,7 @@ export type BidReason =
   | 'too_low'
   | 'over_max'
   | 'over_buy_now'
+  | 'host_cannot_bid'
   | 'rate_limited'
 export type RoundReason =
   | 'bad_seconds'

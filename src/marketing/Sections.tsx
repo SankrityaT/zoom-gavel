@@ -15,6 +15,10 @@ const QUESTIONS = [
     a: 'The meeting host, and any co-host the host names in Zoom. Zoom tells the server who started the meeting, and who becomes a co-host, through signed notices, and every host action is checked against them.',
   },
   {
+    q: 'Can the host bid on their own items?',
+    a: 'No. The host and any co-host run the auction and see every bid, so the server refuses their bids in a real meeting. Practice rooms are open to everyone.',
+  },
+  {
     q: 'Can other bidders see what I bid?',
     a: 'They see the ranking, how many bids each person has made, and the current price with the name of whoever set it. Your other amounts are shown only to you and to the host.',
   },
