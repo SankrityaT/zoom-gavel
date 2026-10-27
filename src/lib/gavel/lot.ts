@@ -1,4 +1,4 @@
-import { boundedInt, boundedString } from './validate'
+import { boundedInt, boundedString, photoIdFrom } from './validate'
 
 export type LotInput = {
   itemName: string
@@ -6,6 +6,7 @@ export type LotInput = {
   reservePrice: number | null
   buyNowPrice: number | null
   seconds: number
+  photoId: string | null
 }
 
 // One lot as the host describes it. Buy Now must be reachable by bidding
@@ -31,5 +32,7 @@ export function parseLot(payload: Record<string, unknown>): { lot: LotInput } | 
   }
   const seconds = boundedInt(payload.seconds, 5, 3600)
   if (seconds === null) return { error: 'seconds must be between 5 and 3600' }
-  return { lot: { itemName, openingBid, reservePrice, buyNowPrice, seconds } }
+  const photo = photoIdFrom(payload.photoId)
+  if ('error' in photo) return photo
+  return { lot: { itemName, openingBid, reservePrice, buyNowPrice, seconds, photoId: photo.photoId } }
 }

@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import { readViewer } from '@/lib/gavel/auth'
 import { hostKeyFor } from '@/lib/gavel/host'
 import { LIMITS, clientIp, enforce, rule } from '@/lib/gavel/rate-limit'
-import { getState, startRound, stopRound, type RoundOutcome } from '@/lib/gavel/server'
-import { boundedInt, boundedString, isSessionKey, rejectCrossSite } from '@/lib/gavel/validate'
+import { getState, setNextPhoto, startRound, stopRound, type RoundOutcome } from '@/lib/gavel/server'
+import { isSandboxKey } from '@/lib/gavel/types'
+import { boundedInt, boundedString, isSessionKey, photoIdFrom, rejectCrossSite } from '@/lib/gavel/validate'
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -70,8 +71,12 @@ export async function POST(
       if (extendWindowSeconds === null || extendBySeconds === null) {
         return badRequest('extension settings out of bounds')
       }
+      const photo = photoIdFrom(payload.photoId)
+      if ('error' in photo) return badRequest(photo.error)
       const limited = await enforce([rule(`round:ip:${clientIp(request)}`, LIMITS.roundPerIp)])
       if (limited) return limited
+      // The photo for the lot about to open (or none, clearing a stale one).
+      if (photo.photoId !== null || !isSandboxKey(uuid)) await setNextPhoto(uuid, hostKey, photo.photoId)
       outcome = await startRound(uuid, hostKey, {
         itemName,
         openingBid,

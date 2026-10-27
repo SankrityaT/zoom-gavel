@@ -128,6 +128,7 @@ function toState(
       hostVerified: true,
       sandbox: true,
       updatedAt: iso(resolved.lastBidAt ?? 0),
+      photoId: null,
     },
     leaderboard,
     serverNow: iso(elapsed),

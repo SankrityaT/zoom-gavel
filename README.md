@@ -234,6 +234,19 @@ nothing at all if they have won nothing, so the name alone never reveals it.
 Inside the Zoom panel it is text, never a link, because an arbitrary link would
 need allow-listing. Removing a host erases their line.
 
+Lot photos. A host (or co-host) adds one picture per lot. The browser shrinks it
+(`src/panel/photo.ts`: longest edge 800 px, WebP or JPEG, at most 150 KB, drawn
+onto a canvas so EXIF and location data are dropped) and posts the bytes to
+`POST /api/session/[key]/photo`, which checks the host rule, the magic bytes
+(JPEG or WebP only) and the 200 KB ceiling, and stores them in `auction_photos`
+(40 per session). The id is returned and travels with the lot: in the queue row,
+or on the start request. A trigger moves the waiting photo onto the session
+(`photo_id`) when the round opens, and `record_round` keeps it on the finished
+round. Photos are served at `GET /api/photo/[id]` from the same origin
+(`nosniff`, private cache, unguessable uuid), so the CSP's `img-src 'self'`
+needs no change. A photo only attaches to a lot of its own auction. They are
+deleted with the session and when the host removes the app.
+
 Winner pages and paid ticks. A winner who asks `action: 'mine'` also gets
 `pageToken`, a random 192-bit token made on their first ask and kept in
 `auction_win_links` (one per session and winner, deleted with the session or

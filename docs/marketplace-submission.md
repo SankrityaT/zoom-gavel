@@ -15,6 +15,7 @@ Checked against Zoom's review guidelines on 2026-10-21 and fixed where we fell s
 
 - **Trademark.** The product is "Gavel" and the app is "Gavel for Zoom Meetings"; the Zoom name appears only as "for Zoom". The old "Zoom Gavel" name is gone from every public page and from the site title. The legal pages say the app is independent and not made or endorsed by Zoom.
 - **User-generated content.** A "Something wrong with this auction? Tell us at (email)" line sits at the foot of the panel, and the terms have a Reporting a problem section (read on business days, answered within 2).
+- **Photos.** A host can add one picture per lot. It is shrunk and re-drawn in the host's browser (so location data is dropped), checked as a JPEG or WebP of at most 200 KB on the server, stored in our database, and served from our own address with an unguessable id. Only hosts and co-hosts can add them; they are deleted with the auction after 30 days, or when the host removes the app. The terms say hosts must have the right to share what they upload.
 - **Sensitive data.** The host's payment line refuses anything shaped like a card or bank number, and the panel tells hosts not to enter one.
 - **Unexpected audio.** Sounds start off inside the Zoom client; the speaker button turns them on. In a browser they start on.
 - **Privacy.** The policy covers what is collected, why, who sees it, retention, access and deletion, encryption at rest, the providers that host the data, and removal on uninstall. It names one developer throughout.

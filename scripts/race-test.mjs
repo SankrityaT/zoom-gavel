@@ -900,6 +900,78 @@ if (WEBHOOK_TOKEN && SESSION_SECRET) {
     check('S32zz a guest winner in a practice room gets a page', typeof g.json?.pageToken === 'string' && (await page(g.json.pageToken)).text.includes('Practice lot'), JSON.stringify(g.json)?.slice(0, 160))
   })
 
+  await scenario('S33', 'lot photos: only the host adds one, and it follows its lot', async () => {
+    const mid = `race-mid-${randomBytes(4).toString('hex')}`
+    const k = meetingKey(mid)
+    const enc = encodeURIComponent(k)
+    const host = mintCookie('userHostG', mid)
+    const attendee = mintCookie('userAttendeeG', mid)
+    await signed({ event: 'meeting.started', payload: { object: { uuid: mid, host_id: 'userHostG', id: 1 } } })
+    const jpeg = (n, fill) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(n, fill)])
+    const upload = (cookie, bytes, type = 'image/jpeg') =>
+      fetch(`${BASE_URL}/api/session/${enc}/photo`, { method: 'POST', headers: { 'content-type': type, ...(cookie ? { cookie } : {}) }, body: bytes }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }))
+    const fetchPhoto = (id) => fetch(`${BASE_URL}/api/photo/${id}`)
+
+    check('S33a a visitor with no identity cannot upload (401)', (await upload(null, jpeg(400, 1))).status === 401)
+    await start(k, { openingBid: 100 }, host)
+    check('S33b an attendee cannot upload (403)', (await upload(attendee, jpeg(400, 1))).status === 403)
+    const notImage = await upload(host, Buffer.from('<script>alert(1)</script>'.repeat(20)), 'image/jpeg')
+    check('S33c something that is not an image is refused (415)', notImage.status === 415, String(notImage.status))
+    const big = await upload(host, jpeg(260 * 1024, 2))
+    check('S33d a photo over the size limit is refused (413)', big.status === 413, String(big.status))
+    const tiny = await upload(host, jpeg(10, 3))
+    check('S33e a fragment too small to be a photo is refused', tiny.status === 415 || tiny.status === 400, String(tiny.status))
+
+    const one = await upload(host, jpeg(900, 4))
+    check('S33f the host uploads a photo and gets an id', one.status === 200 && typeof one.json?.id === 'string', JSON.stringify(one.json))
+    const served = await fetchPhoto(one.json.id)
+    const servedBytes = Buffer.from(await served.arrayBuffer())
+    check('S33g the photo is served as an image with the same bytes', served.status === 200 && served.headers.get('content-type') === 'image/jpeg' && servedBytes.equals(jpeg(900, 4)), String(served.status))
+    check('S33h it is served with nosniff', served.headers.get('x-content-type-options') === 'nosniff')
+    check('S33i an unknown id is a 404', (await fetchPhoto('00000000-0000-4000-8000-000000000000')).status === 404)
+    check('S33j a malformed id is a 404', (await fetchPhoto('not-an-id')).status === 404)
+
+    // A queued lot carries its photo until it starts.
+    const queued = await api(`${enc}/queue`, { method: 'POST', cookie: host, body: { action: 'add', itemName: 'Queued with photo', openingBid: 50, reservePrice: null, buyNowPrice: null, seconds: 30, photoId: one.json.id } })
+    check('S33k a lot is queued with its photo', queued.status === 200 && queued.json.queue?.[0]?.photoId === one.json.id, JSON.stringify(queued.json?.queue?.[0]))
+    const queuedBad = await api(`${enc}/queue`, { method: 'POST', cookie: host, body: { action: 'add', itemName: 'Bad id', openingBid: 50, reservePrice: null, buyNowPrice: null, seconds: 30, photoId: 'nope' } })
+    check('S33l a malformed photo id is a 400', queuedBad.status === 400, String(queuedBad.status))
+    const liveNow = await get(k, attendee)
+    check('S33m the waiting photo is not shown on the live lot', liveNow.json.session.photoId === null, JSON.stringify(liveNow.json.session.photoId))
+    await stop(k, host)
+    const next = await api(`${enc}/queue`, { method: 'POST', cookie: host, body: { action: 'start' } })
+    check('S33n starting the queued lot makes its photo the live one', next.status === 200 && next.json.state.session.photoId === one.json.id, JSON.stringify(next.json?.state?.session?.photoId))
+    check('S33o an attendee sees the photo id on the live lot', (await get(k, attendee)).json.session.photoId === one.json.id)
+
+    // The next lot has no photo unless it brings one.
+    await stop(k, host)
+    const plain = await start(k, { openingBid: 70, itemName: 'No photo lot' }, host)
+    check('S33p a lot started without a photo carries none', plain.status === 200 && plain.json.state.session.photoId === null, JSON.stringify(plain.json?.state?.session?.photoId))
+    await stop(k, host)
+    const direct = await start(k, { openingBid: 80, itemName: 'Direct with photo', photoId: one.json.id }, host)
+    check('S33q a lot started directly takes the photo it names', direct.status === 200 && direct.json.state.session.photoId === one.json.id, JSON.stringify(direct.json?.state?.session?.photoId))
+    check('S33r an attendee cannot hand a photo to a lot (403)', (await api(`${enc}/round`, { method: 'POST', cookie: attendee, body: { action: 'start', itemName: 'x', openingBid: 1, seconds: 30, photoId: one.json.id } })).status === 403)
+
+    // A photo from one auction cannot be attached to another.
+    const mid2 = `race-mid-${randomBytes(4).toString('hex')}`
+    const k2 = meetingKey(mid2)
+    const host2 = mintCookie('userHostH', mid2)
+    await signed({ event: 'meeting.started', payload: { object: { uuid: mid2, host_id: 'userHostH', id: 2 } } })
+    const stolen = await start(k2, { openingBid: 10, itemName: 'Borrowed', photoId: one.json.id }, host2)
+    check('S33s another auction cannot use this photo', stolen.status === 200 && stolen.json.state.session.photoId === null, JSON.stringify(stolen.json?.state?.session?.photoId))
+
+    // The winner's page shows the photo of the lot they won.
+    await bid(k, 200, 'Photo Winner', attendee)
+    await stop(k, host)
+    const mine = await api(`${enc}/payment`, { method: 'POST', cookie: attendee, body: { action: 'mine', bidderId: 'x' } })
+    const pageHtml = await (await fetch(`${BASE_URL}/p/${mine.json.pageToken}`)).text()
+    check('S33t the winner page shows the lot photo', pageHtml.includes(`/api/photo/${one.json.id}`), 'no photo on the page')
+
+    // Removing the host's app erases their photos.
+    await signed({ event: 'app_deauthorized', payload: { user_id: 'userHostG', account_id: 'acct', client_id: 'cid' } })
+    check('S33u the host removed the app and their photos are gone (404)', (await fetchPhoto(one.json.id)).status === 404)
+  })
+
 } else {
   console.log('SKIP  S14 and S24 webhook scenarios (set ZOOM_WEBHOOK_SECRET_TOKEN and SESSION_SECRET to run)')
 }

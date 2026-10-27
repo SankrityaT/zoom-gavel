@@ -60,6 +60,10 @@ export default async function WinnerPage({ params }: { params: Promise<{ token: 
   return (
     <main className="wp">
       <p className="wp-brand">Gavel</p>
+      {wins.length === 1 && wins[0].photo_id && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="wp-photo" src={`/api/photo/${wins[0].photo_id}`} alt={`Photo of ${wins[0].item_name}`} />
+      )}
       <h1>{wins.length === 1 ? `You won the ${wins[0].item_name}` : `You won ${wins.length} lots`}</h1>
       <p className="wp-sub">Winning {wins.length === 1 ? 'bid' : 'bids'}, from the auction on {day(latest)}.</p>
 
@@ -96,6 +100,10 @@ export default async function WinnerPage({ params }: { params: Promise<{ token: 
           {wins.map((win) => (
             <li key={win.round_no}>
               <span>
+                {wins.length > 1 && win.photo_id && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="wp-thumb" src={`/api/photo/${win.photo_id}`} alt="" />
+                )}
                 {win.item_name}
                 {win.paid && <em>Paid</em>}
               </span>

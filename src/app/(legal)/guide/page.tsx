@@ -38,6 +38,10 @@ export default function Guide() {
         </li>
         <li>When the clock ends, the lot shows Sold with the winner, or Not sold if the reserve wasn’t met. Start the next one.</li>
         <li>
+          Tap Add a photo to show a picture of the lot to bidders and to the winner. It is shrunk on your device before it is sent. Only add pictures
+          you have the right to share.
+        </li>
+        <li>
           Under How winners pay, type where winners should send money, such as “Venmo @yourname”, and click Save. Only the people who
           win a lot see it, right after the lot sells. Winners also get a private page address they can open in any browser to pay later. Gavel does not take the payment; you and the winner settle up yourselves.
         </li>

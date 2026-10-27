@@ -60,6 +60,14 @@ export default function Privacy() {
           </tr>
           <tr>
             <td>
+              <strong>A photo of a lot</strong>, if the host adds one: the picture the host chooses, shrunk and re-saved in their own
+              browser first, so location and camera details in the original are dropped. We check that it is an image and keep it
+              small.
+            </td>
+            <td>So bidders and the winner can see what is being sold. Only the host and co-hosts can add one. Anyone shown the lot can see it.</td>
+          </tr>
+          <tr>
+            <td>
               <strong>How winners should pay</strong>: one short line of text the host types, such as a Venmo or Zelle handle. It can
               contain whatever the host chooses to put in it.
             </td>
@@ -157,11 +165,11 @@ export default function Privacy() {
       <h2>How long we keep it</h2>
       <ul>
         <li>Auctions started from a browser link or the demo page are deleted 24 hours after their last activity.</li>
-        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity, along with the host’s payment line and every winner page.</li>
+        <li>Auctions in a Zoom meeting are deleted 30 days after their last activity, along with the host’s payment line, every winner page and every lot photo.</li>
         <li>The counters that hold IP addresses are deleted within 1 hour of expiring.</li>
         <li>
           When you remove the app from Zoom, Zoom notifies us and we erase you straight away: your max bids are deleted, and your name
-          is replaced by “Removed bidder” on your bids and on any lot you won, your private winner pages are deleted, and a payment line you set as host is deleted. The record of the sale stays; your name does not.
+          is replaced by “Removed bidder” on your bids and on any lot you won, your private winner pages are deleted, and a payment line and any lot photos you added as host are deleted. The record of the sale stays; your name does not.
         </li>
       </ul>
 

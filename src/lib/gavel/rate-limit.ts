@@ -19,6 +19,8 @@ export const LIMITS = {
   oauthPerIp: { limit: 120, windowSeconds: 60 },
   paymentPerIp: { limit: 300, windowSeconds: 60 },
   winnerPagePerIp: { limit: 120, windowSeconds: 60 },
+  photoReadPerIp: { limit: 600, windowSeconds: 60 },
+  photoUploadPerIp: { limit: 40, windowSeconds: 3600 },
   webhookPerIp: { limit: 120, windowSeconds: 60 },
 } as const
 

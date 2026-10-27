@@ -54,6 +54,7 @@ export type StartRoundInput = {
   reservePrice: number | null
   buyNowPrice?: number | null
   seconds: number
+  photoId?: string | null
   extendWindowSeconds?: number
   extendBySeconds?: number
 }
@@ -205,4 +206,27 @@ export async function markPaid(
   if (res.status === 429) return { ok: false, error: 'Too many requests. Try again in a moment.' }
   if (res.status === 403 || res.status === 401) return { ok: false, error: 'Only the host can mark lots as paid.' }
   return { ok: false, error: 'Could not save that. Try again.' }
+}
+
+// Sends a lot's photo (already shrunk in the browser); resolves to its id.
+export async function uploadPhoto(
+  sessionKey: string,
+  photo: Blob,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const res = await fetch(sessionUrl(sessionKey, '/photo'), {
+    method: 'POST',
+    headers: { 'content-type': photo.type },
+    body: photo,
+  })
+  const json = (await res.json().catch(() => ({}))) as { id?: string; reason?: string }
+  if (res.ok && json.id) return { ok: true, id: json.id }
+  if (res.status === 429) return { ok: false, error: 'Too many photos just now. Try again later.' }
+  if (res.status === 401 || res.status === 403) return { ok: false, error: 'Only the host can add photos.' }
+  if (res.status === 409) return { ok: false, error: 'This auction has as many photos as it can hold.' }
+  if (res.status === 413) return { ok: false, error: 'That photo is too large.' }
+  return { ok: false, error: 'Could not upload that photo. Try another.' }
+}
+
+export function photoUrl(photoId: string) {
+  return `/api/photo/${encodeURIComponent(photoId)}`
 }

@@ -26,10 +26,12 @@ export function boundedString(value: unknown, max: number): string | null {
 // The identity cookie is SameSite=None (the Zoom web client embeds the app
 // cross-site), so browser POSTs must prove same-origin: reject a foreign
 // Origin header and any non-JSON body. Non-browser clients send no Origin.
-export function rejectCrossSite(request: Request): string | null {
-  const contentType = request.headers.get('content-type') ?? ''
-  if (!contentType.toLowerCase().startsWith('application/json')) {
-    return 'content-type must be application/json'
+// A route that takes a file body names the types it accepts; the Origin check
+// is the same.
+export function rejectCrossSite(request: Request, accepts: string[] = ['application/json']): string | null {
+  const contentType = (request.headers.get('content-type') ?? '').toLowerCase()
+  if (!accepts.some((type) => contentType.startsWith(type))) {
+    return `content-type must be ${accepts.join(' or ')}`
   }
   const origin = request.headers.get('origin')
   if (origin) {
@@ -54,4 +56,17 @@ const SESSION_KEY_PATTERN = /^[A-Za-z0-9_-]{1,200}$/
 
 export function isSessionKey(value: string) {
   return SESSION_KEY_PATTERN.test(value)
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+export function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value)
+}
+
+// A lot's photo id as the host sends it: absent means no photo.
+export function photoIdFrom(value: unknown): { photoId: string | null } | { error: string } {
+  if (value === undefined || value === null) return { photoId: null }
+  if (!isUuid(value)) return { error: 'photoId is not valid' }
+  return { photoId: value }
 }

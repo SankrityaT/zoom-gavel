@@ -1593,3 +1593,80 @@
     transition: none;
   }
 }
+
+/* ---- lot photos ---- */
+.gv-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  margin: 12px 0 0;
+  border-radius: 16px;
+  object-fit: cover;
+  background: var(--paper-2);
+}
+
+.gv-thumb {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--paper-2);
+}
+
+.gv-thumb--lg {
+  width: 64px;
+  height: 64px;
+}
+
+.gv-photo-pick {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0 0;
+  padding: 10px;
+  border: 1.5px dashed rgba(42, 33, 27, 0.22);
+  border-radius: 18px;
+}
+
+.gv-photo-add {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gv-photo-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.gv-photo-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gv-photo-text strong {
+  font-size: 16px;
+}
+
+.gv-photo-text span {
+  font-size: 14px;
+  color: var(--ink-2);
+}

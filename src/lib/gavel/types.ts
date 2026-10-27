@@ -22,6 +22,7 @@ export type SessionRow = {
   bought_now?: boolean
   queue_count?: number
   queue_next?: string | null
+  photo_id?: string | null
 }
 
 export type QueueRow = {
@@ -31,6 +32,7 @@ export type QueueRow = {
   reserve_price: number | null
   buy_now_price: number | null
   seconds: number
+  photo_id?: string | null
 }
 
 export type QueueItem = {
@@ -40,6 +42,7 @@ export type QueueItem = {
   reservePrice: number | null
   buyNowPrice: number | null
   seconds: number
+  photoId: string | null
 }
 
 export function toQueueItem(row: QueueRow): QueueItem {
@@ -50,6 +53,7 @@ export function toQueueItem(row: QueueRow): QueueItem {
     reservePrice: row.reserve_price,
     buyNowPrice: row.buy_now_price,
     seconds: row.seconds,
+    photoId: row.photo_id ?? null,
   }
 }
 
@@ -107,6 +111,8 @@ export type SessionInfo = {
   hostVerified: boolean
   sandbox: boolean
   updatedAt: string
+  /** The live lot's photo, if the host added one. */
+  photoId: string | null
 }
 
 // Rank is public; `amount` is null unless this viewer may see it (their
@@ -232,6 +238,7 @@ export function toSessionInfo(row: SessionRow): SessionInfo {
     hostVerified: row.host_verified === true,
     sandbox: isSandboxKey(row.uuid),
     updatedAt: row.updated_at,
+    photoId: row.photo_id ?? null,
   }
 }
 

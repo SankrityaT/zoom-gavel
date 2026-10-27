@@ -6,6 +6,8 @@ import {
   fetchAnalytics,
   fetchMyPayment,
   markPaid,
+  photoUrl,
+  uploadPhoto,
   fetchPaymentNote,
   fetchQueue,
   fetchResults,
@@ -25,6 +27,7 @@ import logo from '@/marketing/assets/logo.png'
 import { playCue, setCuesDefaultMuted, useCues, useMuted, type Alert } from './cues'
 import { SUPPORT_EMAIL } from '@/legal/contact'
 import { copyText, hasCents, parseDollars } from './money'
+import { shrinkPhoto } from './photo'
 import { RollingNumber, useFlip } from './motion'
 import { useAuctionSession, type AuctionSessionHook } from './useAuctionSession'
 import './panel.css'
@@ -318,6 +321,16 @@ function useRoundClock(auction: AuctionSessionHook, endsAt: string | null, round
 
 // The lot, drawn as a price tag: item, the price, who holds it, and the
 // clock along the tear line.
+// The host's photo of the lot. If it cannot be loaded the lot simply has none.
+function LotPhoto({ id, name, className = 'gv-photo' }: { id: string; name: string; className?: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className={className} src={photoUrl(id)} alt={`Photo of ${name}`} onError={() => setFailed(true)} />
+  )
+}
+
 export function LotTag({ state, auction }: { state: SessionState; auction: AuctionSessionHook }) {
   const { session } = state
   const isOpen = session.status === 'open'
@@ -372,6 +385,7 @@ export function LotTag({ state, auction }: { state: SessionState; auction: Aucti
               <span className="gv-chip">Reserve {formatUsd(session.reservePrice)}</span>
             ))}
         </div>
+        {session.photoId && <LotPhoto id={session.photoId} name={session.itemName} />}
         <h2 className="gv-item">{session.itemName}</h2>
         <p className="gv-price">
           <sup>$</sup>
@@ -1023,6 +1037,7 @@ function HostDesk({
                 <span className="gv-queue-no" aria-hidden="true">
                   {index + 1}
                 </span>
+                {lot.photoId && <LotPhoto id={lot.photoId} name={lot.itemName} className="gv-thumb" />}
                 <span className="gv-name">
                   <strong>{lot.itemName}</strong>
                   <span>
@@ -1059,6 +1074,7 @@ function HostDesk({
         </div>
       )}
       <HostSetup
+        sessionKey={sessionKey}
         state={state}
         auction={auction}
         queued={queue.length}
@@ -1071,12 +1087,14 @@ function HostDesk({
 
 // The host sets a lot up the way they would say it out loud.
 function HostSetup({
+  sessionKey,
   state,
   auction,
   queued,
   queueBusy,
   onQueue,
 }: {
+  sessionKey: string
   state: SessionState
   auction: AuctionSessionHook
   queued: number
@@ -1093,6 +1111,32 @@ function HostSetup({
   const [seconds, setSeconds] = useState(60)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [photoId, setPhotoId] = useState<string | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  const photoInput = useRef<HTMLInputElement>(null)
+
+  // Shrinks the picked picture in the browser, then sends it.
+  async function pickPhoto(file: File | undefined) {
+    if (!file) return
+    setPhotoBusy(true)
+    setPhotoError('')
+    try {
+      const small = await shrinkPhoto(file)
+      if (!small) {
+        setPhotoError('That file could not be used as a photo. Try a JPEG or PNG.')
+        return
+      }
+      const result = await uploadPhoto(sessionKey, small)
+      if (result.ok) setPhotoId(result.id)
+      else setPhotoError(result.error)
+    } catch {
+      setPhotoError('The photo did not reach the auction. Check your connection and try again.')
+    } finally {
+      setPhotoBusy(false)
+      if (photoInput.current) photoInput.current.value = ''
+    }
+  }
 
   const openingValue = Number.parseInt(opening, 10)
   const reserveValue = reserve === '' ? null : Number.parseInt(reserve, 10)
@@ -1122,8 +1166,11 @@ function HostSetup({
         reservePrice: reserveValue,
         buyNowPrice: buyNowValue,
         seconds,
+        photoId,
       })
-      if (!result.ok) {
+      if (result.ok) {
+        setPhotoId(null)
+      } else {
         setMessage(
           result.reason === 'round_open'
             ? 'A round is already running.'
@@ -1153,11 +1200,13 @@ function HostSetup({
       reservePrice: reserveValue,
       buyNowPrice: buyNowValue,
       seconds,
+      photoId,
     })
     if (error) {
       setMessage(error)
     } else {
       // Ready for the next one; the round length usually stays the same.
+      setPhotoId(null)
       setItemName('')
       setOpening('')
       setReserve('')
@@ -1193,6 +1242,45 @@ function HostSetup({
           <Slot value={buyNow} onChange={setBuyNow} placeholder="None" label="Buy Now price in dollars, optional" money optional />.
         </span>
       </p>
+      <div className="gv-photo-pick">
+        <input
+          ref={photoInput}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(event) => void pickPhoto(event.target.files?.[0])}
+        />
+        {photoId ? (
+          <>
+            <LotPhoto id={photoId} name={itemName.trim() || 'this lot'} className="gv-thumb gv-thumb--lg" />
+            <span className="gv-photo-text">
+              <strong>Photo added</strong>
+              <span>Bidders and the winner will see it.</span>
+            </span>
+            <button className="gv-queue-remove" type="button" onClick={() => setPhotoId(null)}>
+              Remove
+            </button>
+          </>
+        ) : (
+          <button className="gv-photo-add" type="button" disabled={photoBusy} onClick={() => photoInput.current?.click()}>
+            <span className="gv-photo-icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" />
+                <circle cx="12" cy="13" r="3.5" />
+              </svg>
+            </span>
+            <span className="gv-photo-text">
+              <strong>{photoBusy ? 'Adding the photo…' : 'Add a photo'}</strong>
+              <span>Optional. Bidders and the winner see it.</span>
+            </span>
+          </button>
+        )}
+      </div>
+      {photoError && (
+        <p className="gv-message" role="alert">
+          {photoError}
+        </p>
+      )}
       <div className="gv-lengths" role="radiogroup" aria-label="Round length">
         {ROUND_LENGTHS.map((option) => (
           <button

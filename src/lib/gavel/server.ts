@@ -172,7 +172,7 @@ export async function winLinkFor(uuid: string, bidderKey: string | null, candida
 }
 
 export type WinnerPage = {
-  wins: { round_no: number; item_name: string; final_bid: number; bought_now: boolean; paid: boolean; closed_at: string }[]
+  wins: { round_no: number; item_name: string; final_bid: number; bought_now: boolean; paid: boolean; closed_at: string; photo_id: string | null }[]
   note: string | null
   expires_at: string
 }
@@ -308,7 +308,7 @@ export async function getQueue(uuid: string) {
 export async function queueAdd(
   uuid: string,
   hostKey: string | null,
-  item: { itemName: string; openingBid: number; reservePrice: number | null; buyNowPrice: number | null; seconds: number },
+  item: { itemName: string; openingBid: number; reservePrice: number | null; buyNowPrice: number | null; seconds: number; photoId?: string | null },
 ) {
   return withItems(
     await rpc<QueueOutcome>('queue_add', {
@@ -319,6 +319,7 @@ export async function queueAdd(
       p_reserve: item.reservePrice,
       p_buy_now: item.buyNowPrice,
       p_seconds: item.seconds,
+      p_photo_id: item.photoId ?? null,
     }),
   )
 }
@@ -336,4 +337,28 @@ export async function queueStartNext(uuid: string, hostKey: string | null) {
       p_extend_by: 15,
     }),
   )
+}
+
+// Lot photos. The host's browser shrinks the picture; the bytes travel as base64.
+export async function addPhoto(uuid: string, hostKey: string | null, type: string, bytes: Buffer) {
+  return rpc<{ ok: true; id: string } | { ok: false; reason: string }>('add_photo', {
+    p_uuid: uuid,
+    p_host_key: hostKey,
+    p_type: type,
+    p_b64: bytes.toString('base64'),
+  })
+}
+
+export async function getPhoto(id: string) {
+  const row = await rpc<{ type: string; b64: string } | null>('get_photo', { p_id: id })
+  return row ? { type: row.type, bytes: Buffer.from(row.b64, 'base64') } : null
+}
+
+// The photo the next lot started directly will carry; null clears it.
+export async function setNextPhoto(uuid: string, hostKey: string | null, photoId: string | null) {
+  return rpc<{ ok: boolean; reason?: string }>('set_next_photo', {
+    p_uuid: uuid,
+    p_host_key: hostKey,
+    p_photo_id: photoId,
+  })
 }

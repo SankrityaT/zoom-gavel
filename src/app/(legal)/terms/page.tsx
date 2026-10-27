@@ -32,6 +32,7 @@ export default function Terms() {
         <li>The payment line you write is yours. Make it accurate and make sure it is really yours: winners will send money to it. Do not put in anything that is not a way to pay you, and never link to something harmful.</li>
         <li>You are responsible for what you sell and for following the laws and rules that apply to the sale, including any that apply to auctions or fundraising where you are.</li>
         <li>Describe lots honestly. Do not list anything unlawful, stolen or harmful.</li>
+        <li>Only add a photo you have the right to share, and only of the lot. No photos of people who have not agreed, and nothing unlawful or harmful.</li>
         <li>You decide the rules of each lot (starting bid, reserve, Buy Now, length). Once a round has started, the app follows them.</li>
       </ul>
 
@@ -52,7 +53,7 @@ export default function Terms() {
 
       <h2>Reporting a problem</h2>
       <p>
-        Item names, payment lines and the names people bid under come from hosts and bidders, not from us. If something in an auction is
+        Item names, photos, payment lines and the names people bid under come from hosts and bidders, not from us. If something in an auction is
         offensive, misleading or unsafe, write to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> or use the link at the foot of
         the panel. We read reports on business days, usually answer within 2 business days, and remove content, end a session or block a
         source when it breaks these terms. Hosts decide who may bid in their own auction.
