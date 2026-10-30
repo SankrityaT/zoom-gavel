@@ -1,6 +1,6 @@
 # Zoom Marketplace submission pack
 
-Everything Zoom asks for when submitting Gavel for Zoom Meetings for review,
+Everything Zoom asks for when submitting Gavel for review,
 written once so it can be pasted into the Marketplace forms. Sources checked
 against Zoom's published review docs on 2026-10-19:
 [submit for review](https://developers.zoom.us/docs/distribute/app-submission/submit-apps-review/),
@@ -13,7 +13,7 @@ Zoom's Publish page reads "Ready for submission" with no incomplete items. **Not
 
 Checked against Zoom's review guidelines on 2026-10-21 and fixed where we fell short:
 
-- **Trademark.** The product is "Gavel" and the app is "Gavel for Zoom Meetings"; the Zoom name appears only as "for Zoom". The old "Zoom Gavel" name is gone from every public page and from the site title. The legal pages say the app is independent and not made or endorsed by Zoom.
+- **Trademark.** The product and the app are both named "Gavel". Zoom's review (Oct 30) asked for "Zoom" to be removed from the app name, so it is no longer in the name anywhere; the word "Zoom" appears only to say what the app works with. The old "Zoom Gavel" name is gone from every public page and from the site title. The legal pages say the app is independent and not made or endorsed by Zoom.
 - **User-generated content.** A "Something wrong with this auction? Tell us at (email)" line sits at the foot of the panel, and the terms have a Reporting a problem section (read on business days, answered within 2).
 - **Photos.** A host can add one picture per lot. It is shrunk and re-drawn in the host's browser (so location data is dropped), checked as a JPEG or WebP of at most 200 KB on the server, stored in our database, and served from our own address with an unguessable id. Only hosts and co-hosts can add them; they are deleted with the auction after 30 days, or when the host removes the app. The terms say hosts must have the right to share what they upload.
 - **Sensitive data.** The host's payment line refuses anything shaped like a card or bank number, and the panel tells hosts not to enter one.
@@ -34,7 +34,7 @@ Known limits, stated openly (the listing and legal pages say so):
 
 ## Listing
 
-- **App name:** Gavel for Zoom Meetings
+- **App name:** Gavel
 - **Short description (150 max, this is 121):**
   Live auctions inside your Zoom meeting. Queue items, bid in real time, set a max bid, get alerts, and export the results.
 - **Long description:**
@@ -90,7 +90,7 @@ its own origin (server-sent events and plain HTTPS), never to another host.
 > need a meeting you host and a second participant (a second Zoom account, or a
 > browser on the link from the host's panel).
 >
-> 1. Start a meeting as the host. Apps, search "Gavel for Zoom Meetings", Add, Authorize. The panel opens and says "You're hosting".
+> 1. Start a meeting as the host. Apps, search "Gavel", Add, Authorize. The panel opens and says "You're hosting".
 > 2. Type an item and a starting bid, click Add to queue twice (two lots), then Start the first. A second participant sees the lot, a clock and a "Bidding is open" banner.
 > 3. The second participant bids. The price changes on both screens in under a second.
 > 4. The second participant taps "Set a max bid", enters an amount above the price. The host (or a third participant) bids against it: Gavel bids for the max-bid holder automatically.

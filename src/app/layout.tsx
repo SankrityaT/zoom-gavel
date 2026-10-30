@@ -5,7 +5,7 @@ import '../index.css'
 export const metadata: Metadata = {
   metadataBase: new URL('https://gavel-app.sankrityat.com'),
   title: {
-    default: 'Gavel for Zoom Meetings · The auction never leaves the meeting',
+    default: 'Gavel · The auction never leaves the meeting',
     template: '%s · Gavel',
   },
   description:
@@ -13,14 +13,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     url: 'https://gavel-app.sankrityat.com',
-    siteName: 'Gavel for Zoom Meetings',
-    title: 'Gavel for Zoom Meetings · The auction never leaves the meeting',
+    siteName: 'Gavel',
+    title: 'Gavel · The auction never leaves the meeting',
     description:
       'Live bidding inside the Zoom window itself. Built on the Zoom Apps SDK with real-time sync.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Gavel for Zoom Meetings · The auction never leaves the meeting',
+    title: 'Gavel · The auction never leaves the meeting',
     description:
       'Live bidding inside the Zoom window itself. Built on the Zoom Apps SDK with real-time sync.',
   },

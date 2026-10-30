@@ -1,4 +1,4 @@
-# Zoom Gavel
+# Gavel
 
 Live auctions inside a Zoom meeting. The host opens Gavel from the Zoom Apps
 panel, puts an item up, and everyone in the meeting bids in real time from a

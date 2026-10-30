@@ -5,7 +5,7 @@ import { APP_NAME, DEVELOPER, SUPPORT_EMAIL } from '@/legal/contact'
 
 export const metadata: Metadata = {
   title: 'Terms of use',
-  description: 'The rules for using Gavel for Zoom Meetings.',
+  description: 'The rules for using Gavel.',
 }
 
 export default function Terms() {

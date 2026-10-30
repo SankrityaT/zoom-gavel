@@ -5,7 +5,7 @@ import { APP_NAME } from '@/legal/contact'
 
 export const metadata: Metadata = {
   title: 'User guide',
-  description: 'How to add, use and remove Gavel for Zoom Meetings.',
+  description: 'How to add, use and remove Gavel.',
 }
 
 export default function Guide() {
@@ -14,7 +14,7 @@ export default function Guide() {
       <h2>Add it</h2>
       <ol>
         <li>Open the Zoom desktop app and join or start a meeting.</li>
-        <li>In the meeting toolbar, click Apps. Search for “Gavel for Zoom Meetings” and click Add. Or open the Zoom Marketplace, find the app, and click Add.</li>
+        <li>In the meeting toolbar, click Apps. Search for “Gavel” and click Add. Or open the Zoom Marketplace, find the app, and click Add.</li>
         <li>Zoom asks you to allow the app to run in your meetings. Accept.</li>
         <li>Gavel opens in a panel beside the meeting.</li>
       </ol>
@@ -84,7 +84,7 @@ export default function Guide() {
       <h2>Remove it</h2>
       <ol>
         <li>In a Zoom meeting, click Apps, then My Apps.</li>
-        <li>Find Gavel for Zoom Meetings and choose Remove. You can also remove it from the Zoom Marketplace under Manage, then Added Apps.</li>
+        <li>Find Gavel and choose Remove. You can also remove it from the Zoom Marketplace under Manage, then Added Apps.</li>
       </ol>
       <p>
         Removing the app erases you: Zoom tells us, we delete your max bids, and your name on bids and on lots you won becomes

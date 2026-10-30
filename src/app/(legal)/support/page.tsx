@@ -5,7 +5,7 @@ import { APP_NAME, RESPONSE_TIME, SUPPORT_EMAIL, SUPPORT_HOURS } from '@/legal/c
 
 export const metadata: Metadata = {
   title: 'Support',
-  description: 'How to get help with Gavel for Zoom Meetings.',
+  description: 'How to get help with Gavel.',
 }
 
 export default function Support() {

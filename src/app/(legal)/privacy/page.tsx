@@ -4,7 +4,7 @@ import { APP_NAME, DEVELOPER, SUPPORT_EMAIL } from '@/legal/contact'
 
 export const metadata: Metadata = {
   title: 'Privacy policy',
-  description: 'What Gavel for Zoom Meetings collects, why, who sees it, and how long it is kept.',
+  description: 'What Gavel collects, why, who sees it, and how long it is kept.',
 }
 
 export default function Privacy() {
